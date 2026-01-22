@@ -204,29 +204,77 @@ import requests
 
 def cut_audio_for_shazam(input_path: str) -> str | None:
     """
-    AudD uchun 8 soniya toza audio kesib beradi
+    AudD uchun 8 soniya toza audio kesib beradi (Railway mos)
     """
     try:
         cut_path = input_path.replace(".mp3", "_cut.mp3")
 
+        ffmpeg = FFMPEG_PATH if FFMPEG_PATH else "ffmpeg"
+
         cmd = [
-            "ffmpeg", "-y",
+            ffmpeg, "-y",
             "-i", input_path,
-            "-t", "8",          # faqat 8 soniya
+            "-t", "8",          # 8 soniya
             "-ac", "1",        # mono
-            "-ar", "44100",    # standart sample rate
+            "-ar", "44100",
             cut_path
         ]
 
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
 
-        if os.path.exists(cut_path):
+        if result.returncode != 0:
+            logger.error(f"FFmpeg cut error: {result.stderr.decode()}")
+            return None
+
+        if os.path.exists(cut_path) and os.path.getsize(cut_path) > 0:
             return cut_path
 
         return None
+
     except Exception as e:
-        logger.error(f"Cut audio error: {e}")
+        logger.error(f"Cut audio exception: {e}", exc_info=True)
         return None
+def cut_audio_for_shazam(input_path: str) -> str | None:
+    """
+    AudD uchun 8 soniya toza audio kesib beradi (Railway mos)
+    """
+    try:
+        cut_path = input_path.replace(".mp3", "_cut.mp3")
+
+        ffmpeg = FFMPEG_PATH if FFMPEG_PATH else "ffmpeg"
+
+        cmd = [
+            ffmpeg, "-y",
+            "-i", input_path,
+            "-t", "8",          # 8 soniya
+            "-ac", "1",        # mono
+            "-ar", "44100",
+            cut_path
+        ]
+
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        if result.returncode != 0:
+            logger.error(f"FFmpeg cut error: {result.stderr.decode()}")
+            return None
+
+        if os.path.exists(cut_path) and os.path.getsize(cut_path) > 0:
+            return cut_path
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Cut audio exception: {e}", exc_info=True)
+        return None
+
 
 
 def identify_song_audd(audio_path: str):
