@@ -21,6 +21,8 @@ from aiogram.types import (
 # ======================
 BOT_TOKEN = "8253736025:AAHmMPac7DmA_fi01urRtI0wwAfd7SAYArE"
 ADMIN_IDS = [8238730404]
+AUDD_API_TOKEN = "030ece056f7aacdcc32f1f1b7330c24e"
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMP_DIR = os.path.join(BASE_DIR, "temp")
@@ -97,6 +99,28 @@ CREATE TABLE IF NOT EXISTS cache (
 """)
 conn.commit()
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS shazam_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT
+)
+""")
+conn.commit()
+
+
+
+def can_use_shazam(limit: int = 900) -> bool:
+    cursor.execute("SELECT COUNT(*) FROM shazam_usage")
+    count = cursor.fetchone()[0]
+    return count < limit
+
+
+def log_shazam_use():
+    cursor.execute(
+        "INSERT INTO shazam_usage (created_at) VALUES (?)",
+        (datetime.now().isoformat(),)
+    )
+    conn.commit()
 
 
 def get_cached_file(url: str, file_type: str):
@@ -173,88 +197,47 @@ class AdminState(StatesGroup):
 
 
 # ======================
-# SHAZAM HYBRID (Chromaprint + Acoustid)
+# SHAZAM (AudD PROFESSIONAL)
 # ======================
+import requests
 
-ACOUSTID_URL = "https://api.acoustid.org/v2/lookup"
-ACOUSTID_CLIENT = "test"  # client keysiz ham ishlaydi (cheklangan)
-
-def identify_song_local(audio_path: str):
+def identify_song_audd(audio_path: str):
     """
-    1. 15 soniya audio kesadi
-    2. fpcalc bilan fingerprint oladi
-    3. Acoustid ga yuboradi
+    1. Audio faylni AudD API ga yuboradi
+    2. Qo‘shiqni professional tarzda aniqlaydi
     """
 
     try:
-        # 1️⃣ 15 soniya kesib olamiz (aniqlik uchun)
-        cut_path = audio_path.replace(".mp3", "_cut.wav")
+        url = "https://api.audd.io/"
 
-        cmd_cut = [
-            "ffmpeg", "-y",
-            "-i", audio_path,
-            "-t", "15",
-            "-ac", "1",
-            "-ar", "44100",
-            cut_path
-        ]
-        subprocess.run(cmd_cut, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        with open(audio_path, "rb") as f:
+            files = {"file": f}
+            data = {
+                "api_token": AUDD_API_TOKEN,
+                "return": "apple_music,spotify"
+            }
 
-        if not os.path.exists(cut_path):
-            return None
+            r = requests.post(url, data=data, files=files, timeout=60)
 
-        # 2️⃣ Fingerprint olamiz
-        cmd_fp = ["fpcalc", "-json", cut_path]
-        p = subprocess.run(cmd_fp, capture_output=True, text=True)
-
-        if p.returncode != 0:
-            return None
-
-        data = json.loads(p.stdout)
-        fingerprint = data.get("fingerprint")
-        duration = data.get("duration")
-
-        if not fingerprint or not duration:
-            return None
-
-        # 3️⃣ Acoustid ga yuboramiz
-        params = {
-            "client": ACOUSTID_CLIENT,
-            "meta": "recordings+releasegroups+artists",
-            "duration": int(duration),
-            "fingerprint": fingerprint,
-        }
-
-        import requests
-        r = requests.get(ACOUSTID_URL, params=params, timeout=30)
         result = r.json()
 
-        if result.get("status") != "ok":
+        if result.get("status") != "success":
+            logger.error(f"AudD status error: {result}")
             return None
 
-        results = result.get("results")
-        if not results:
+        song = result.get("result")
+        if not song:
             return None
-
-        # Eng birinchi natijani olamiz
-        best = results[0]
-        recordings = best.get("recordings")
-        if not recordings:
-            return None
-
-        rec = recordings[0]
-
-        title = rec.get("title")
-        artists = rec.get("artists")
-        artist = artists[0]["name"] if artists else None
 
         return {
-            "title": title,
-            "artist": artist
+            "title": song.get("title"),
+            "artist": song.get("artist"),
+            "album": song.get("album"),
+            "release_date": song.get("release_date"),
         }
 
     except Exception as e:
-        logger.error(f"Hybrid Shazam error: {e}")
+        logger.error(f"AudD error: {e}", exc_info=True)
         return None
 
 
@@ -555,12 +538,21 @@ async def format_chosen(cb: CallbackQuery):
         platform = "Platform"
 
     user_id = cb.from_user.id
-
     await cb.answer()
 
-    # 🔹 SHAZAM REJIMI — ENG AVVAL TEKSHIRAMIZ
+    # ======================
+    # 🔥 SHAZAM (AudD PROFESSIONAL)
+    # ======================
     if mode == "shazam":
         status = await cb.message.answer("🎧 Qo‘shiq aniqlanmoqda...")
+
+        # 🛑 LIMIT TEKSHIRISH (1000 dan oshmaslik uchun)
+        if not can_use_shazam():
+            await status.edit_text(
+                "⛔ Shazam limiti tugadi.\n\n"
+                "Iltimos, keyinroq urinib ko‘ring."
+            )
+            return
 
         # Avval audio yuklab olamiz
         path = await download_audio(url)
@@ -569,8 +561,8 @@ async def format_chosen(cb: CallbackQuery):
             await status.edit_text("❌ Audio yuklab bo‘lmadi.")
             return
 
-        # Hybrid aniqlash (Chromaprint + Acoustid)
-        info = identify_song_local(path)
+        # 🔥 PROFESSIONAL ANIQLASH (AudD)
+        info = identify_song_audd(path)
 
         os.unlink(path)
         LINK_CACHE.pop(short_id, None)
@@ -578,14 +570,19 @@ async def format_chosen(cb: CallbackQuery):
         if not info:
             await status.edit_text(
                 "❌ Qo‘shiq topilmadi.\n\n"
-                "Iltimos, toza audio yoki musiqa aniq eshitiladigan video yuboring."
+                "Iltimos, musiqa aniq eshitiladigan video yoki audio yuboring."
             )
             return
+
+        # 🔢 LOG QILAMIZ (limit uchun)
+        log_shazam_use()
 
         await status.edit_text(
             "🎵 Qo‘shiq topildi:\n\n"
             f"🎤 Artist: {info.get('artist')}\n"
-            f"🎶 Nomi: {info.get('title')}"
+            f"🎶 Nomi: {info.get('title')}\n"
+            f"💿 Album: {info.get('album')}\n"
+            f"📅 Sana: {info.get('release_date')}"
         )
         return
 
@@ -663,7 +660,6 @@ async def format_chosen(cb: CallbackQuery):
     except Exception as e:
         logger.error(f"ERROR: {e}", exc_info=True)
         await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
-
 
 
 # ======================
