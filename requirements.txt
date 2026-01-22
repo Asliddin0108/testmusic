@@ -1,4 +1,4 @@
-aiogram==3.4.1
+aiogram
 yt-dlp
 imageio-ffmpeg
-pydantic<2.6
+requests
