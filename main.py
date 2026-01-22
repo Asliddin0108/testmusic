@@ -173,6 +173,93 @@ class AdminState(StatesGroup):
 
 
 # ======================
+# SHAZAM HYBRID (Chromaprint + Acoustid)
+# ======================
+
+ACOUSTID_URL = "https://api.acoustid.org/v2/lookup"
+ACOUSTID_CLIENT = "test"  # client keysiz ham ishlaydi (cheklangan)
+
+def identify_song_local(audio_path: str):
+    """
+    1. 15 soniya audio kesadi
+    2. fpcalc bilan fingerprint oladi
+    3. Acoustid ga yuboradi
+    """
+
+    try:
+        # 1️⃣ 15 soniya kesib olamiz (aniqlik uchun)
+        cut_path = audio_path.replace(".mp3", "_cut.wav")
+
+        cmd_cut = [
+            "ffmpeg", "-y",
+            "-i", audio_path,
+            "-t", "15",
+            "-ac", "1",
+            "-ar", "44100",
+            cut_path
+        ]
+        subprocess.run(cmd_cut, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        if not os.path.exists(cut_path):
+            return None
+
+        # 2️⃣ Fingerprint olamiz
+        cmd_fp = ["fpcalc", "-json", cut_path]
+        p = subprocess.run(cmd_fp, capture_output=True, text=True)
+
+        if p.returncode != 0:
+            return None
+
+        data = json.loads(p.stdout)
+        fingerprint = data.get("fingerprint")
+        duration = data.get("duration")
+
+        if not fingerprint or not duration:
+            return None
+
+        # 3️⃣ Acoustid ga yuboramiz
+        params = {
+            "client": ACOUSTID_CLIENT,
+            "meta": "recordings+releasegroups+artists",
+            "duration": int(duration),
+            "fingerprint": fingerprint,
+        }
+
+        import requests
+        r = requests.get(ACOUSTID_URL, params=params, timeout=30)
+        result = r.json()
+
+        if result.get("status") != "ok":
+            return None
+
+        results = result.get("results")
+        if not results:
+            return None
+
+        # Eng birinchi natijani olamiz
+        best = results[0]
+        recordings = best.get("recordings")
+        if not recordings:
+            return None
+
+        rec = recordings[0]
+
+        title = rec.get("title")
+        artists = rec.get("artists")
+        artist = artists[0]["name"] if artists else None
+
+        return {
+            "title": title,
+            "artist": artist
+        }
+
+    except Exception as e:
+        logger.error(f"Hybrid Shazam error: {e}")
+        return None
+
+
+
+# ======================
 # YT-DLP
 # ======================
 def get_video_opts(output_path: str):
@@ -431,7 +518,9 @@ async def handle_link(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎬 Video (MP4)", callback_data=f"video|{short_id}")],
         [InlineKeyboardButton(text="🎵 Audio (MP3)", callback_data=f"audio|{short_id}")],
+        [InlineKeyboardButton(text="🎧 Qo‘shiqni aniqlash", callback_data=f"shazam|{short_id}")],
     ])
+
 
     await message.answer(
         f"📥 {platform} link qabul qilindi.\n\nQaysi formatda yuklaymiz?",
@@ -441,7 +530,7 @@ async def handle_link(message: Message):
 # ==========================
 # FORMAT TANLASH
 # ==========================
-@dp.callback_query(F.data.startswith(("video|", "audio|")))
+@dp.callback_query(F.data.startswith(("video|", "audio|", "shazam|")))
 async def format_chosen(cb: CallbackQuery):
     try:
         mode, short_id = cb.data.split("|", 1)
@@ -468,15 +557,49 @@ async def format_chosen(cb: CallbackQuery):
     user_id = cb.from_user.id
 
     await cb.answer()
-    status = await cb.message.answer(f"⏬ {platform} dan yuklanmoqda...")
-        # ======================
-    # ⚡ CACHE TEKSHIRISH (FORWARD MIYA)
+
+    # 🔹 SHAZAM REJIMI — ENG AVVAL TEKSHIRAMIZ
+    if mode == "shazam":
+        status = await cb.message.answer("🎧 Qo‘shiq aniqlanmoqda...")
+
+        # Avval audio yuklab olamiz
+        path = await download_audio(url)
+
+        if not path:
+            await status.edit_text("❌ Audio yuklab bo‘lmadi.")
+            return
+
+        # Hybrid aniqlash (Chromaprint + Acoustid)
+        info = identify_song_local(path)
+
+        os.unlink(path)
+        LINK_CACHE.pop(short_id, None)
+
+        if not info:
+            await status.edit_text(
+                "❌ Qo‘shiq topilmadi.\n\n"
+                "Iltimos, toza audio yoki musiqa aniq eshitiladigan video yuboring."
+            )
+            return
+
+        await status.edit_text(
+            "🎵 Qo‘shiq topildi:\n\n"
+            f"🎤 Artist: {info.get('artist')}\n"
+            f"🎶 Nomi: {info.get('title')}"
+        )
+        return
+
     # ======================
+    # ODDIY VIDEO / AUDIO YO‘LI
+    # ======================
+    status = await cb.message.answer(f"⏬ {platform} dan yuklanmoqda...")
+
+    # ⚡ CACHE TEKSHIRISH
     file_type = "audio" if mode == "audio" else "video"
     cached_id = get_cached_file(url, file_type)
 
     if cached_id:
-        await status.edit_text("yuborilmoqda...")
+        await status.edit_text("📤 Cache’dan yuborilmoqda...")
 
         if file_type == "audio":
             await cb.message.answer_audio(cached_id)
@@ -492,7 +615,9 @@ async def format_chosen(cb: CallbackQuery):
         LINK_CACHE.pop(short_id, None)
         return
 
-
+    # ======================
+    # YUKLAB OLISH
+    # ======================
     try:
         if mode == "audio":
             path = await download_audio(url)
@@ -533,14 +658,11 @@ async def format_chosen(cb: CallbackQuery):
             await cb.message.answer(AD_TEXT)
 
         os.unlink(path)
-
-        # 🔥 RAM tozalash
         LINK_CACHE.pop(short_id, None)
 
     except Exception as e:
         logger.error(f"ERROR: {e}", exc_info=True)
         await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
-
 
 
 
