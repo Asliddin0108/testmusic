@@ -4,6 +4,7 @@ import os
 import sqlite3
 import uuid
 import shutil
+import subprocess 
 from datetime import datetime
 
 import yt_dlp
@@ -200,6 +201,33 @@ class AdminState(StatesGroup):
 # SHAZAM (AudD PROFESSIONAL)
 # ======================
 import requests
+
+def cut_audio_for_shazam(input_path: str) -> str | None:
+    """
+    AudD uchun 8 soniya toza audio kesib beradi
+    """
+    try:
+        cut_path = input_path.replace(".mp3", "_cut.mp3")
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", input_path,
+            "-t", "8",          # faqat 8 soniya
+            "-ac", "1",        # mono
+            "-ar", "44100",    # standart sample rate
+            cut_path
+        ]
+
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        if os.path.exists(cut_path):
+            return cut_path
+
+        return None
+    except Exception as e:
+        logger.error(f"Cut audio error: {e}")
+        return None
+
 
 def identify_song_audd(audio_path: str):
     """
@@ -546,7 +574,7 @@ async def format_chosen(cb: CallbackQuery):
     if mode == "shazam":
         status = await cb.message.answer("🎧 Qo‘shiq aniqlanmoqda...")
 
-        # 🛑 LIMIT TEKSHIRISH (1000 dan oshmaslik uchun)
+        # 🛑 LIMIT TEKSHIRISH
         if not can_use_shazam():
             await status.edit_text(
                 "⛔ Shazam limiti tugadi.\n\n"
@@ -554,17 +582,27 @@ async def format_chosen(cb: CallbackQuery):
             )
             return
 
-        # Avval audio yuklab olamiz
+        # 1️⃣ Audio yuklab olamiz
         path = await download_audio(url)
 
         if not path:
             await status.edit_text("❌ Audio yuklab bo‘lmadi.")
             return
 
-        # 🔥 PROFESSIONAL ANIQLASH (AudD)
-        info = identify_song_audd(path)
+        # 2️⃣ 🔥 8 soniya kesamiz (HAL QILUVCHI JOY)
+        cut_path = cut_audio_for_shazam(path)
 
+        if not cut_path:
+            await status.edit_text("❌ Audio kesib bo‘lmadi.")
+            os.unlink(path)
+            return
+
+        # 3️⃣ 🔥 AudD ga FAQAT kesilgan audio yuboramiz
+        info = identify_song_audd(cut_path)
+
+        # tozalash
         os.unlink(path)
+        os.unlink(cut_path)
         LINK_CACHE.pop(short_id, None)
 
         if not info:
@@ -574,7 +612,7 @@ async def format_chosen(cb: CallbackQuery):
             )
             return
 
-        # 🔢 LOG QILAMIZ (limit uchun)
+        # 🔢 LIMIT LOG
         log_shazam_use()
 
         await status.edit_text(
@@ -585,6 +623,7 @@ async def format_chosen(cb: CallbackQuery):
             f"📅 Sana: {info.get('release_date')}"
         )
         return
+
 
     # ======================
     # ODDIY VIDEO / AUDIO YO‘LI
