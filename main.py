@@ -202,21 +202,19 @@ class AdminState(StatesGroup):
 # ======================
 import requests
 
-def identify_song_audd_by_url(video_url: str):
-    """
-    AudD ga to‘g‘ridan-to‘g‘ri VIDEO URL yuboradi.
-    Hech qanday yuklab olish, ffmpeg, kesish YO‘Q.
-    """
+def identify_song_audd(audio_or_video_path: str):
     try:
         url = "https://api.audd.io/"
 
-        data = {
-            "api_token": AUDD_API_TOKEN,
-            "url": video_url,
-            "return": "apple_music,spotify"
-        }
+        with open(audio_or_video_path, "rb") as f:
+            files = {"file": f}
+            data = {
+                "api_token": AUDD_API_TOKEN,
+                "return": "apple_music,spotify"
+            }
 
-        r = requests.post(url, data=data, timeout=120)
+            r = requests.post(url, data=data, files=files, timeout=120)
+
         result = r.json()
 
         if result.get("status") != "success":
@@ -235,8 +233,9 @@ def identify_song_audd_by_url(video_url: str):
         }
 
     except Exception as e:
-        logger.error(f"AudD URL error: {e}", exc_info=True)
+        logger.error(f"AudD error: {e}", exc_info=True)
         return None
+
 
 
 
@@ -497,22 +496,22 @@ async def handle_link(message: Message):
     short_id = str(uuid.uuid4())[:8]
     LINK_CACHE[short_id] = url   # 🔥 URL’ni RAM’da saqlaymiz
 
+    # 🔥 ENDI SHAZAM BU YERDA YO‘Q — FAQAT VIDEO / AUDIO
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎬 Video (MP4)", callback_data=f"video|{short_id}")],
         [InlineKeyboardButton(text="🎵 Audio (MP3)", callback_data=f"audio|{short_id}")],
-        [InlineKeyboardButton(text="🎧 Qo‘shiqni aniqlash", callback_data=f"shazam|{short_id}")],
     ])
-
 
     await message.answer(
         f"📥 {platform} link qabul qilindi.\n\nQaysi formatda yuklaymiz?",
         reply_markup=kb
     )
 
+
 # ==========================
 # FORMAT TANLASH
 # ==========================
-@dp.callback_query(F.data.startswith(("video|", "audio|", "shazam|")))
+@dp.callback_query(F.data.startswith(("video|", "audio|")))
 async def format_chosen(cb: CallbackQuery):
     try:
         mode, short_id = cb.data.split("|", 1)
@@ -540,46 +539,6 @@ async def format_chosen(cb: CallbackQuery):
     await cb.answer()
 
     # ======================
-    # 🔥 SHAZAM (AudD PROFESSIONAL, URL orqali)
-    # ======================
-    if mode == "shazam":
-        status = await cb.message.answer("🎧 Qo‘shiq aniqlanmoqda...")
-
-        # 🛑 LIMIT TEKSHIRISH
-        if not can_use_shazam():
-            await status.edit_text(
-                "⛔ Shazam limiti tugadi.\n\n"
-                "Iltimos, keyinroq urinib ko‘ring."
-            )
-            return
-
-        # 🔥 TO‘G‘RIDAN-TO‘G‘RI URL ni AudD ga yuboramiz
-        info = identify_song_audd_by_url(url)
-
-        LINK_CACHE.pop(short_id, None)
-
-        if not info:
-            await status.edit_text(
-                "❌ Qo‘shiq topilmadi.\n\n"
-                "Iltimos, musiqa aniq eshitiladigan video yuboring."
-            )
-            return
-
-        # 🔢 LIMIT LOG
-        log_shazam_use()
-
-        await status.edit_text(
-            "🎵 Qo‘shiq topildi:\n\n"
-            f"🎤 Artist: {info.get('artist')}\n"
-            f"🎶 Nomi: {info.get('title')}\n"
-            f"💿 Album: {info.get('album')}\n"
-            f"📅 Sana: {info.get('release_date')}"
-        )
-        return
-
-
-
-    # ======================
     # ODDIY VIDEO / AUDIO YO‘LI
     # ======================
     status = await cb.message.answer(f"⏬ {platform} dan yuklanmoqda...")
@@ -594,7 +553,20 @@ async def format_chosen(cb: CallbackQuery):
         if file_type == "audio":
             await cb.message.answer_audio(cached_id)
         else:
-            await cb.message.answer_video(cached_id, supports_streaming=True)
+            msg = await cb.message.answer_video(cached_id, supports_streaming=True)
+
+            # 🔥 CACHE’DAN HAM VIDEO OSTIGA SHAZAM TUGMASI
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="🎧 Musiqani aniqlash",
+                    callback_data=f"shazam_file|{msg.video.file_id}"
+                )]
+            ])
+
+            await cb.message.answer(
+                "Agar xohlasangiz, shu videodagi musiqani aniqlab beraman 👇",
+                reply_markup=kb
+            )
 
         increment_downloads(user_id)
         await status.edit_text("✅ Tayyor! (cache)")
@@ -641,6 +613,19 @@ async def format_chosen(cb: CallbackQuery):
             msg = await cb.message.answer_video(file, supports_streaming=True)
             save_cached_file(url, msg.video.file_id, "video")
 
+            # 🔥 VIDEO YUBORILGANDAN KEYIN SHAZAM TUGMASI
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="🎧 Musiqani aniqlash",
+                    callback_data=f"shazam_file|{msg.video.file_id}"
+                )]
+            ])
+
+            await cb.message.answer(
+                "Agar xohlasangiz, shu videodagi musiqani aniqlab beraman 👇",
+                reply_markup=kb
+            )
+
         increment_downloads(user_id)
         await status.edit_text("✅ Tayyor!")
 
@@ -652,6 +637,55 @@ async def format_chosen(cb: CallbackQuery):
 
     except Exception as e:
         logger.error(f"ERROR: {e}", exc_info=True)
+        await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
+
+
+# ==========================
+# SHAZAM FROM DOWNLOADED VIDEO
+# ==========================
+@dp.callback_query(F.data.startswith("shazam_file|"))
+async def shazam_from_video(cb: CallbackQuery):
+    try:
+        _, file_id = cb.data.split("|", 1)
+    except Exception:
+        await cb.answer("Xato", show_alert=True)
+        return
+
+    status = await cb.message.answer("🎧 Videodagi musiqa aniqlanmoqda...")
+
+    # 🛑 LIMIT
+    if not can_use_shazam():
+        await status.edit_text("⛔ Shazam limiti tugadi.")
+        return
+
+    try:
+        file = await bot.get_file(file_id)
+        local_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}.mp4")
+        await bot.download_file(file.file_path, local_path)
+
+        info = identify_song_audd(local_path)
+
+        os.unlink(local_path)
+
+        if not info:
+            await status.edit_text(
+                "❌ Qo‘shiq topilmadi.\n\n"
+                "Iltimos, musiqa aniq eshitiladigan video bo‘lsin."
+            )
+            return
+
+        log_shazam_use()
+
+        await status.edit_text(
+            "🎵 Qo‘shiq topildi:\n\n"
+            f"🎤 Artist: {info.get('artist')}\n"
+            f"🎶 Nomi: {info.get('title')}\n"
+            f"💿 Album: {info.get('album')}\n"
+            f"📅 Sana: {info.get('release_date')}"
+        )
+
+    except Exception as e:
+        logger.error(f"Shazam from video error: {e}", exc_info=True)
         await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
 
 
