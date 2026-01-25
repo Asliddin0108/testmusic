@@ -651,7 +651,7 @@ async def format_chosen(cb: CallbackQuery):
 
 
 # ==========================
-# SHAZAM FROM INSTAGRAM VIDEO
+# SHAZAM FROM INSTAGRAM VIDEO (FIXED)
 # ==========================
 @dp.callback_query(F.data.startswith("shazam_file|"))
 async def shazam_from_instagram(cb: CallbackQuery):
@@ -674,43 +674,52 @@ async def shazam_from_instagram(cb: CallbackQuery):
         return
 
     try:
-        # 1️⃣ Videoni vaqtincha yuklaymiz
+        # 1️⃣ Videoni Telegramdan yuklaymiz (real format bilan)
         file = await bot.get_file(file_id)
-        video_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}.mp4")
+
+        ext = os.path.splitext(file.file_path)[1] or ".mp4"
+        video_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}{ext}")
+
         await bot.download_file(file.file_path, video_path)
 
-        # 2️⃣ 🔥 8 soniya audio kesib olamiz
-        audio_path = video_path.replace(".mp4", "_cut.mp3")
+        # 2️⃣ 🔥 12 soniya audio kesib olamiz (map YO‘Q)
+        audio_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}_cut.mp3")
 
         ffmpeg = FFMPEG_PATH if FFMPEG_PATH else "ffmpeg"
 
         cmd = [
             ffmpeg, "-y",
-            "-ss", "5",
+            "-ss", "0",              # boshidan olamiz
             "-i", video_path,
-            "-map", "0:a:0",     # 🔥 FAQAT AUDIO STREAMNI OL
-            "-t", "10",         # 15 soniya
-            "-vn",              # 🔥 videoni butunlay o‘chir
-            "-ac", "1",
-            "-ar", "44100",
+            "-t", "12",             # 12 soniya
+            "-vn",                  # videoni o‘chir
+            "-ac", "1",             # mono
+            "-ar", "44100",         # 44.1 kHz
             audio_path
         ]
-
 
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if result.returncode != 0 or not os.path.exists(audio_path):
-            logger.error(f"FFmpeg cut error: {result.stderr.decode()}")
-            await status.edit_text("❌ Audio kesib bo‘lmadi.")
-            os.unlink(video_path)
+            logger.error("FFmpeg cut error:")
+            logger.error(result.stderr.decode())
+            await status.edit_text("❌ Videodan audio ajratib bo‘lmadi.")
+            try:
+                os.unlink(video_path)
+            except:
+                pass
             return
 
-        # 3️⃣ 🔥 FAQAT KESILGAN AUDIO’NI AudD GA YUBORAMIZ
+        # 3️⃣ 🔥 KESILGAN AUDIO’NI AudD GA YUBORAMIZ
         info = identify_song_audd(audio_path)
 
         # 4️⃣ Tozalash
-        os.unlink(video_path)
-        os.unlink(audio_path)
+        try:
+            os.unlink(video_path)
+            os.unlink(audio_path)
+        except:
+            pass
+
         SHAZAM_FILE_CACHE.pop(shazam_id, None)
 
         if not info:
