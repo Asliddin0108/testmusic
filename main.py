@@ -202,99 +202,21 @@ class AdminState(StatesGroup):
 # ======================
 import requests
 
-def cut_audio_for_shazam(input_path: str) -> str | None:
+def identify_song_audd_by_url(video_url: str):
     """
-    AudD uchun 8 soniya toza audio kesib beradi (Railway mos)
+    AudD ga to‘g‘ridan-to‘g‘ri VIDEO URL yuboradi.
+    Hech qanday yuklab olish, ffmpeg, kesish YO‘Q.
     """
-    try:
-        cut_path = input_path.replace(".mp3", "_cut.mp3")
-
-        ffmpeg = FFMPEG_PATH if FFMPEG_PATH else "ffmpeg"
-
-        cmd = [
-            ffmpeg, "-y",
-            "-i", input_path,
-            "-t", "8",          # 8 soniya
-            "-ac", "1",        # mono
-            "-ar", "44100",
-            cut_path
-        ]
-
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-
-        if result.returncode != 0:
-            logger.error(f"FFmpeg cut error: {result.stderr.decode()}")
-            return None
-
-        if os.path.exists(cut_path) and os.path.getsize(cut_path) > 0:
-            return cut_path
-
-        return None
-
-    except Exception as e:
-        logger.error(f"Cut audio exception: {e}", exc_info=True)
-        return None
-def cut_audio_for_shazam(input_path: str) -> str | None:
-    """
-    AudD uchun 8 soniya toza audio kesib beradi (Railway mos)
-    """
-    try:
-        cut_path = input_path.replace(".mp3", "_cut.mp3")
-
-        ffmpeg = FFMPEG_PATH if FFMPEG_PATH else "ffmpeg"
-
-        cmd = [
-            ffmpeg, "-y",
-            "-i", input_path,
-            "-t", "8",          # 8 soniya
-            "-ac", "1",        # mono
-            "-ar", "44100",
-            cut_path
-        ]
-
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-
-        if result.returncode != 0:
-            logger.error(f"FFmpeg cut error: {result.stderr.decode()}")
-            return None
-
-        if os.path.exists(cut_path) and os.path.getsize(cut_path) > 0:
-            return cut_path
-
-        return None
-
-    except Exception as e:
-        logger.error(f"Cut audio exception: {e}", exc_info=True)
-        return None
-
-
-
-def identify_song_audd(audio_path: str):
-    """
-    1. Audio faylni AudD API ga yuboradi
-    2. Qo‘shiqni professional tarzda aniqlaydi
-    """
-
     try:
         url = "https://api.audd.io/"
 
-        with open(audio_path, "rb") as f:
-            files = {"file": f}
-            data = {
-                "api_token": AUDD_API_TOKEN,
-                "return": "apple_music,spotify"
-            }
+        data = {
+            "api_token": AUDD_API_TOKEN,
+            "url": video_url,
+            "return": "apple_music,spotify"
+        }
 
-            r = requests.post(url, data=data, files=files, timeout=60)
-
+        r = requests.post(url, data=data, timeout=120)
         result = r.json()
 
         if result.get("status") != "success":
@@ -313,8 +235,9 @@ def identify_song_audd(audio_path: str):
         }
 
     except Exception as e:
-        logger.error(f"AudD error: {e}", exc_info=True)
+        logger.error(f"AudD URL error: {e}", exc_info=True)
         return None
+
 
 
 
@@ -617,7 +540,7 @@ async def format_chosen(cb: CallbackQuery):
     await cb.answer()
 
     # ======================
-    # 🔥 SHAZAM (AudD PROFESSIONAL)
+    # 🔥 SHAZAM (AudD PROFESSIONAL, URL orqali)
     # ======================
     if mode == "shazam":
         status = await cb.message.answer("🎧 Qo‘shiq aniqlanmoqda...")
@@ -630,33 +553,15 @@ async def format_chosen(cb: CallbackQuery):
             )
             return
 
-        # 1️⃣ Audio yuklab olamiz
-        path = await download_audio(url)
+        # 🔥 TO‘G‘RIDAN-TO‘G‘RI URL ni AudD ga yuboramiz
+        info = identify_song_audd_by_url(url)
 
-        if not path:
-            await status.edit_text("❌ Audio yuklab bo‘lmadi.")
-            return
-
-        # 2️⃣ 🔥 8 soniya kesamiz (HAL QILUVCHI JOY)
-        cut_path = cut_audio_for_shazam(path)
-
-        if not cut_path:
-            await status.edit_text("❌ Audio kesib bo‘lmadi.")
-            os.unlink(path)
-            return
-
-        # 3️⃣ 🔥 AudD ga FAQAT kesilgan audio yuboramiz
-        info = identify_song_audd(cut_path)
-
-        # tozalash
-        os.unlink(path)
-        os.unlink(cut_path)
         LINK_CACHE.pop(short_id, None)
 
         if not info:
             await status.edit_text(
                 "❌ Qo‘shiq topilmadi.\n\n"
-                "Iltimos, musiqa aniq eshitiladigan video yoki audio yuboring."
+                "Iltimos, musiqa aniq eshitiladigan video yuboring."
             )
             return
 
@@ -671,6 +576,7 @@ async def format_chosen(cb: CallbackQuery):
             f"📅 Sana: {info.get('release_date')}"
         )
         return
+
 
 
     # ======================
