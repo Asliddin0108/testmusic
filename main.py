@@ -674,16 +674,39 @@ async def shazam_from_instagram(cb: CallbackQuery):
         return
 
     try:
-        # 1️⃣ Telegram’dan videoni vaqtincha yuklaymiz
+        # 1️⃣ Videoni vaqtincha yuklaymiz
         file = await bot.get_file(file_id)
-        local_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}.mp4")
-        await bot.download_file(file.file_path, local_path)
+        video_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}.mp4")
+        await bot.download_file(file.file_path, video_path)
 
-        # 2️⃣ AudD ga yuboramiz
-        info = identify_song_audd(local_path)
+        # 2️⃣ 🔥 8 soniya audio kesib olamiz
+        audio_path = video_path.replace(".mp4", "_cut.mp3")
 
-        # 3️⃣ Tozalash
-        os.unlink(local_path)
+        ffmpeg = FFMPEG_PATH if FFMPEG_PATH else "ffmpeg"
+
+        cmd = [
+            ffmpeg, "-y",
+            "-i", video_path,
+            "-t", "8",        # 8 soniya
+            "-ac", "1",      # mono
+            "-ar", "44100",
+            audio_path
+        ]
+
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        if result.returncode != 0 or not os.path.exists(audio_path):
+            logger.error(f"FFmpeg cut error: {result.stderr.decode()}")
+            await status.edit_text("❌ Audio kesib bo‘lmadi.")
+            os.unlink(video_path)
+            return
+
+        # 3️⃣ 🔥 FAQAT KESILGAN AUDIO’NI AudD GA YUBORAMIZ
+        info = identify_song_audd(audio_path)
+
+        # 4️⃣ Tozalash
+        os.unlink(video_path)
+        os.unlink(audio_path)
         SHAZAM_FILE_CACHE.pop(shazam_id, None)
 
         if not info:
