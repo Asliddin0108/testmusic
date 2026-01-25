@@ -686,7 +686,7 @@ async def shazam_from_instagram(cb: CallbackQuery):
 
         cmd = [
             ffmpeg, "-y",
-            "-ss", "8",     # 10-soniyadan boshlaymiz
+            "-ss", "5",     # 10-soniyadan boshlaymiz
             "-i", video_path,
             "-t", "10",     # 🔥 15 soniya olamiz
             "-ac", "1",
