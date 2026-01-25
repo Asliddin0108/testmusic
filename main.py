@@ -686,12 +686,14 @@ async def shazam_from_instagram(cb: CallbackQuery):
 
         cmd = [
             ffmpeg, "-y",
+            "-ss", "10",     # 10-soniyadan boshlaymiz
             "-i", video_path,
-            "-t", "8",        # 8 soniya
-            "-ac", "1",      # mono
+            "-t", "15",     # 🔥 15 soniya olamiz
+            "-ac", "1",
             "-ar", "44100",
             audio_path
         ]
+
 
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
