@@ -651,7 +651,7 @@ async def format_chosen(cb: CallbackQuery):
 
 
 # ==========================
-# SHAZAM FROM INSTAGRAM VIDEO (FIXED)
+# SHAZAM FROM INSTAGRAM VIDEO (BACKGROUND MUSIC TUNED)
 # ==========================
 @dp.callback_query(F.data.startswith("shazam_file|"))
 async def shazam_from_instagram(cb: CallbackQuery):
@@ -682,26 +682,37 @@ async def shazam_from_instagram(cb: CallbackQuery):
 
         await bot.download_file(file.file_path, video_path)
 
-        # 2️⃣ 🔥 12 soniya audio kesib olamiz (map YO‘Q)
-        audio_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}_cut.mp3")
+        # 2️⃣ 🔥 Background music’ni kuchaytirib audio ajratamiz
+        audio_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}_bg.mp3")
 
         ffmpeg = FFMPEG_PATH if FFMPEG_PATH else "ffmpeg"
 
         cmd = [
             ffmpeg, "-y",
-            "-ss", "0",              # boshidan olamiz
+
+            # 🔥 Videoning o‘rtasidan boshlaymiz (intro emas)
+            "-ss", "20",
             "-i", video_path,
-            "-t", "12",             # 12 soniya
-            "-vn",                  # videoni o‘chir
-            "-ac", "1",             # mono
-            "-ar", "44100",         # 44.1 kHz
+
+            # 🔥 15 soniya olamiz
+            "-t", "15",
+            "-vn",
+
+            # 🔥 BACKGROUND MUSIC'NI USTUN QILUVCHI FILTERLAR
+            "-af",
+            "highpass=f=200, lowpass=f=5000, "
+            "acompressor=threshold=-18dB:ratio=4:attack=5:release=50, "
+            "volume=2.5",
+
+            "-ac", "1",        # mono
+            "-ar", "44100",   # 44.1 kHz
             audio_path
         ]
 
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if result.returncode != 0 or not os.path.exists(audio_path):
-            logger.error("FFmpeg cut error:")
+            logger.error("FFmpeg bg-music filter error:")
             logger.error(result.stderr.decode())
             await status.edit_text("❌ Videodan audio ajratib bo‘lmadi.")
             try:
@@ -710,7 +721,7 @@ async def shazam_from_instagram(cb: CallbackQuery):
                 pass
             return
 
-        # 3️⃣ 🔥 KESILGAN AUDIO’NI AudD GA YUBORAMIZ
+        # 3️⃣ 🔥 FAQAT FILTRLANGAN AUDIO’NI AudD GA YUBORAMIZ
         info = identify_song_audd(audio_path)
 
         # 4️⃣ Tozalash
@@ -742,7 +753,6 @@ async def shazam_from_instagram(cb: CallbackQuery):
     except Exception as e:
         logger.error(f"Shazam from instagram error: {e}", exc_info=True)
         await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
-
 
 
 # ======================
