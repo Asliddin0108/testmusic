@@ -56,6 +56,7 @@ logger = logging.getLogger("vidbot")
 # RAM LINK CACHE   👇 SHU YERGA
 # ======================
 LINK_CACHE = {}
+SHAZAM_FILE_CACHE = {}
 
 # ======================
 # FFMPEG AUTO-DETECT
@@ -476,7 +477,7 @@ async def handle_ad_text(message: Message, state: FSMContext):
 
 
 # ==========================
-# LINK QABUL QILISH  (INSTAGRAMGA MAXSUS)
+# LINK QABUL QILISH
 # ==========================
 @dp.message(F.text.regexp(r"https?://"))
 async def handle_link(message: Message):
@@ -494,20 +495,13 @@ async def handle_link(message: Message):
         return
 
     short_id = str(uuid.uuid4())[:8]
-    LINK_CACHE[short_id] = url
+    LINK_CACHE[short_id] = url   # URL’ni RAM’da saqlaymiz
 
-    # 🔥 FAQAT INSTAGRAM UCHUN KEYIN SHAZAM BO‘LADI
-    if platform == "Instagram":
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎬 Video (MP4)", callback_data=f"video|{short_id}")],
-            [InlineKeyboardButton(text="🎵 Audio (MP3)", callback_data=f"audio|{short_id}")],
-        ])
-    else:
-        # ❗ BOSHQA PLATFORMALAR — SHAZAM UMUMAN YO‘Q
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎬 Video (MP4)", callback_data=f"video|{short_id}")],
-            [InlineKeyboardButton(text="🎵 Audio (MP3)", callback_data=f"audio|{short_id}")],
-        ])
+    # ❗ Bu yerda SHAZAM YO‘Q — faqat video / audio
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎬 Video (MP4)", callback_data=f"video|{short_id}")],
+        [InlineKeyboardButton(text="🎵 Audio (MP3)", callback_data=f"audio|{short_id}")],
+    ])
 
     await message.answer(
         f"📥 {platform} link qabul qilindi.\n\nQaysi formatda yuklaymiz?",
@@ -531,7 +525,7 @@ async def format_chosen(cb: CallbackQuery):
         await cb.answer("⚠️ Link eskirib ketgan. Iltimos, linkni qayta yuboring.", show_alert=True)
         return
 
-    # platformni URLdan aniqlab olamiz
+    # platform aniqlash
     if "youtu" in url:
         platform = "YouTube"
     elif "instagram" in url:
@@ -563,18 +557,22 @@ async def format_chosen(cb: CallbackQuery):
         else:
             msg = await cb.message.answer_video(cached_id, supports_streaming=True)
 
-            # 🔥 CACHE’DAN HAM VIDEO OSTIGA SHAZAM TUGMASI
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="🎧 Musiqani aniqlash",
-                    callback_data=f"shazam_file|{msg.video.file_id}"
-                )]
-            ])
+            # 🔥 FAQAT INSTAGRAM BO‘LSA — SHAZAM TUGMASI
+            if "instagram" in url:
+                shazam_id = uuid.uuid4().hex[:8]
+                SHAZAM_FILE_CACHE[shazam_id] = msg.video.file_id
 
-            await cb.message.answer(
-                "Agar xohlasangiz, shu videodagi musiqani aniqlab beraman 👇",
-                reply_markup=kb
-            )
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text="🎧 Musiqani aniqlash",
+                        callback_data=f"shazam_file|{shazam_id}"
+                    )]
+                ])
+
+                await cb.message.answer(
+                    "Agar xohlasangiz, shu videodagi musiqani aniqlab beraman 👇",
+                    reply_markup=kb
+                )
 
         increment_downloads(user_id)
         await status.edit_text("✅ Tayyor! (cache)")
@@ -621,18 +619,22 @@ async def format_chosen(cb: CallbackQuery):
             msg = await cb.message.answer_video(file, supports_streaming=True)
             save_cached_file(url, msg.video.file_id, "video")
 
-            # 🔥 VIDEO YUBORILGANDAN KEYIN SHAZAM TUGMASI
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="🎧 Musiqani aniqlash",
-                    callback_data=f"shazam_file|{msg.video.file_id}"
-                )]
-            ])
+            # 🔥 FAQAT INSTAGRAM BO‘LSA — SHAZAM TUGMASI
+            if "instagram" in url:
+                shazam_id = uuid.uuid4().hex[:8]
+                SHAZAM_FILE_CACHE[shazam_id] = msg.video.file_id
 
-            await cb.message.answer(
-                "Agar xohlasangiz, shu videodagi musiqani aniqlab beraman 👇",
-                reply_markup=kb
-            )
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text="🎧 Musiqani aniqlash",
+                        callback_data=f"shazam_file|{shazam_id}"
+                    )]
+                ])
+
+                await cb.message.answer(
+                    "Agar xohlasangiz, shu videodagi musiqani aniqlab beraman 👇",
+                    reply_markup=kb
+                )
 
         increment_downloads(user_id)
         await status.edit_text("✅ Tayyor!")
@@ -649,14 +651,19 @@ async def format_chosen(cb: CallbackQuery):
 
 
 # ==========================
-# SHAZAM FROM DOWNLOADED VIDEO
+# SHAZAM FROM INSTAGRAM VIDEO
 # ==========================
 @dp.callback_query(F.data.startswith("shazam_file|"))
-async def shazam_from_video(cb: CallbackQuery):
+async def shazam_from_instagram(cb: CallbackQuery):
     try:
-        _, file_id = cb.data.split("|", 1)
+        _, shazam_id = cb.data.split("|", 1)
+        file_id = SHAZAM_FILE_CACHE.get(shazam_id)
     except Exception:
         await cb.answer("Xato", show_alert=True)
+        return
+
+    if not file_id:
+        await cb.answer("Bu video eskirib ketgan", show_alert=True)
         return
 
     status = await cb.message.answer("🎧 Videodagi musiqa aniqlanmoqda...")
@@ -667,13 +674,17 @@ async def shazam_from_video(cb: CallbackQuery):
         return
 
     try:
+        # 1️⃣ Telegram’dan videoni vaqtincha yuklaymiz
         file = await bot.get_file(file_id)
         local_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}.mp4")
         await bot.download_file(file.file_path, local_path)
 
+        # 2️⃣ AudD ga yuboramiz
         info = identify_song_audd(local_path)
 
+        # 3️⃣ Tozalash
         os.unlink(local_path)
+        SHAZAM_FILE_CACHE.pop(shazam_id, None)
 
         if not info:
             await status.edit_text(
@@ -693,8 +704,9 @@ async def shazam_from_video(cb: CallbackQuery):
         )
 
     except Exception as e:
-        logger.error(f"Shazam from video error: {e}", exc_info=True)
+        logger.error(f"Shazam from instagram error: {e}", exc_info=True)
         await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
+
 
 
 # ======================
