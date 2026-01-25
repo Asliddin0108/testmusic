@@ -690,19 +690,21 @@ async def shazam_from_instagram(cb: CallbackQuery):
         cmd = [
             ffmpeg, "-y",
 
-            # 🔥 Videoning o‘rtasidan boshlaymiz (intro emas)
+            # 🔥 Videoning o‘rtasidan boshlaymiz
             "-ss", "20",
             "-i", video_path,
 
-            # 🔥 15 soniya olamiz
-            "-t", "15",
+            # 🔥 Faqat 5 soniya olamiz
+            "-t", "5",
             "-vn",
 
-            # 🔥 BACKGROUND MUSIC'NI USTUN QILUVCHI FILTERLAR
+            # 🔥 JUDA KUCHLI BACKGROUND MUSIC FILTR
             "-af",
-            "highpass=f=200, lowpass=f=5000, "
-            "acompressor=threshold=-18dB:ratio=4:attack=5:release=50, "
-            "volume=2.5",
+            "highpass=f=300, "            # past erkak ovozini kesadi
+            "lowpass=f=4000, "            # nutq shovqinini kesadi
+            "equalizer=f=1000:width_type=o:width=2:g=6, "  # musiqa diapazonini kuchaytiradi
+            "acompressor=threshold=-20dB:ratio=6:attack=3:release=100, "  # gapni qattiq bosadi
+            "volume=3.5",                # 🔥 fon musiqani kuchli ko‘taradi
 
             "-ac", "1",        # mono
             "-ar", "44100",   # 44.1 kHz
