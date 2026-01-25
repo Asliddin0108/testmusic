@@ -476,7 +476,7 @@ async def handle_ad_text(message: Message, state: FSMContext):
 
 
 # ==========================
-# LINK QABUL QILISH
+# LINK QABUL QILISH  (INSTAGRAMGA MAXSUS)
 # ==========================
 @dp.message(F.text.regexp(r"https?://"))
 async def handle_link(message: Message):
@@ -494,18 +494,26 @@ async def handle_link(message: Message):
         return
 
     short_id = str(uuid.uuid4())[:8]
-    LINK_CACHE[short_id] = url   # 🔥 URL’ni RAM’da saqlaymiz
+    LINK_CACHE[short_id] = url
 
-    # 🔥 ENDI SHAZAM BU YERDA YO‘Q — FAQAT VIDEO / AUDIO
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎬 Video (MP4)", callback_data=f"video|{short_id}")],
-        [InlineKeyboardButton(text="🎵 Audio (MP3)", callback_data=f"audio|{short_id}")],
-    ])
+    # 🔥 FAQAT INSTAGRAM UCHUN KEYIN SHAZAM BO‘LADI
+    if platform == "Instagram":
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎬 Video (MP4)", callback_data=f"video|{short_id}")],
+            [InlineKeyboardButton(text="🎵 Audio (MP3)", callback_data=f"audio|{short_id}")],
+        ])
+    else:
+        # ❗ BOSHQA PLATFORMALAR — SHAZAM UMUMAN YO‘Q
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎬 Video (MP4)", callback_data=f"video|{short_id}")],
+            [InlineKeyboardButton(text="🎵 Audio (MP3)", callback_data=f"audio|{short_id}")],
+        ])
 
     await message.answer(
         f"📥 {platform} link qabul qilindi.\n\nQaysi formatda yuklaymiz?",
         reply_markup=kb
     )
+
 
 
 # ==========================
