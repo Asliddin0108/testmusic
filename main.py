@@ -203,39 +203,71 @@ class AdminState(StatesGroup):
 # ======================
 import requests
 
-def identify_song_audd(audio_or_video_path: str):
+def search_music_from_instagram_metadata(url: str) -> list:
+    """
+    Instagram linkdan yt-dlp orqali music metadata olib,
+    3–5 ta ehtimoliy variant qaytaradi.
+    """
+    results = []
+
     try:
-        url = "https://api.audd.io/"
-
-        with open(audio_or_video_path, "rb") as f:
-            files = {"file": f}
-            data = {
-                "api_token": AUDD_API_TOKEN,
-                "return": "apple_music,spotify"
-            }
-
-            r = requests.post(url, data=data, files=files, timeout=120)
-
-        result = r.json()
-
-        if result.get("status") != "success":
-            logger.error(f"AudD status error: {result}")
-            return None
-
-        song = result.get("result")
-        if not song:
-            return None
-
-        return {
-            "title": song.get("title"),
-            "artist": song.get("artist"),
-            "album": song.get("album"),
-            "release_date": song.get("release_date"),
+        opts = {
+            "quiet": True,
+            "skip_download": True,
+            "nocheckcertificate": True,
         }
 
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        # 1️⃣ Asosiy track / artist
+        track = info.get("track")
+        artist = info.get("artist")
+
+        if track and artist:
+            results.append({
+                "artist": artist,
+                "title": track,
+                "source": "Instagram metadata"
+            })
+
+        # 2️⃣ audio_name (Instagram official audio nomi)
+        audio_name = info.get("audio_name")
+        if audio_name:
+            results.append({
+                "artist": "Instagram Audio",
+                "title": audio_name,
+                "source": "Instagram audio_name"
+            })
+
+        # 3️⃣ description ichidan ham urinib ko‘ramiz
+        description = info.get("description", "")
+        if description:
+            # juda sodda heuristic: " - " bilan ajratilgan bo‘lsa
+            if " - " in description:
+                parts = description.split(" - ", 1)
+                if len(parts) == 2:
+                    results.append({
+                        "artist": parts[0][:50],
+                        "title": parts[1][:50],
+                        "source": "Description"
+                    })
+
+        # 4️⃣ Dublikatlarni olib tashlaymiz
+        unique = []
+        seen = set()
+        for r in results:
+            key = (r["artist"].lower(), r["title"].lower())
+            if key not in seen:
+                seen.add(key)
+                unique.append(r)
+
+        # Maksimal 5 ta variant
+        return unique[:5]
+
     except Exception as e:
-        logger.error(f"AudD error: {e}", exc_info=True)
-        return None
+        logger.error(f"Metadata search error: {e}", exc_info=True)
+        return []
 
 
 # ======================
@@ -612,7 +644,7 @@ async def handle_link(message: Message):
 
 
 # ==========================
-# FORMAT TANLASH
+# FORMAT TANLASH (UPDATED WITH METADATA SEARCH)
 # ==========================
 @dp.callback_query(F.data.startswith(("video|", "audio|")))
 async def format_chosen(cb: CallbackQuery):
@@ -642,6 +674,37 @@ async def format_chosen(cb: CallbackQuery):
     await cb.answer()
 
     # ======================
+    # 🔥 1-BOSQICH: AGAR INSTAGRAM BO‘LSA → AVVAL METADATA QIDIRAMIZ
+    # ======================
+    # 🔥 1-BOSQICH: INSTAGRAM METADATA QIDIRUV
+    if "instagram" in url:
+        await cb.message.answer("🔍 Instagram metadata’dan musiqa qidirilmoqda...")
+
+        variants = search_music_from_instagram_metadata(url)
+
+        if variants:
+            text = "🎧 Topilgan ehtimoliy musiqalar:\n\n"
+            kb_rows = []
+
+            for i, v in enumerate(variants, start=1):
+                text += f"{i}. {v['artist']} – {v['title']}\n"
+                kb_rows.append(
+                    InlineKeyboardButton(
+                        text=str(i),
+                        callback_data=f"choose_music|{i-1}|{short_id}"
+                    )
+                )
+
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[kb_rows]
+            )
+
+            await cb.message.answer(text, reply_markup=keyboard)
+
+            return
+
+
+    # ======================
     # ODDIY VIDEO / AUDIO YO‘LI
     # ======================
     status = await cb.message.answer(f"⏬ {platform} dan yuklanmoqda...")
@@ -651,7 +714,7 @@ async def format_chosen(cb: CallbackQuery):
     cached_id = get_cached_file(url, file_type)
 
     # ======================
-    # 1️⃣ CACHE’DAN YUBORILGANDA
+    # 2️⃣ CACHE’DAN YUBORILGANDA
     # ======================
     if cached_id:
         await status.edit_text("📤 Cache’dan yuborilmoqda...")
@@ -665,7 +728,6 @@ async def format_chosen(cb: CallbackQuery):
             if "instagram" in url:
                 shazam_id = uuid.uuid4().hex[:8]
 
-                # 🔴 BU YER O‘ZGARDI
                 SHAZAM_FILE_CACHE[shazam_id] = {
                     "url": url,
                     "variants": []
@@ -693,7 +755,7 @@ async def format_chosen(cb: CallbackQuery):
         return
 
     # ======================
-    # 2️⃣ YANGI YUKLAB OLISH
+    # 3️⃣ YANGI YUKLAB OLISH
     # ======================
     try:
         if mode == "audio":
@@ -732,7 +794,6 @@ async def format_chosen(cb: CallbackQuery):
             if "instagram" in url:
                 shazam_id = uuid.uuid4().hex[:8]
 
-                # 🔴 BU YER HAM O‘ZGARDI
                 SHAZAM_FILE_CACHE[shazam_id] = {
                     "url": url,
                     "variants": []
@@ -762,6 +823,46 @@ async def format_chosen(cb: CallbackQuery):
     except Exception as e:
         logger.error(f"ERROR: {e}", exc_info=True)
         await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
+
+
+
+
+
+
+
+@dp.callback_query(F.data.startswith("choose_music|"))
+async def choose_music_variant(cb: CallbackQuery):
+    try:
+        _, index_str, short_id = cb.data.split("|")
+        index = int(index_str)
+
+        url = LINK_CACHE.get(short_id)
+        if not url:
+            await cb.answer("Link eskirib ketgan", show_alert=True)
+            return
+
+        variants = search_music_from_instagram_metadata(url)
+
+        if index >= len(variants):
+            await cb.answer("Variant topilmadi", show_alert=True)
+            return
+
+        chosen = variants[index]
+
+        await cb.message.answer(
+            "🎵 Tanlangan musiqa:\n\n"
+            f"🎤 Artist: {chosen['artist']}\n"
+            f"🎶 Nomi: {chosen['title']}\n"
+            f"📌 Manba: {chosen['source']}"
+        )
+
+        await cb.answer("Tanlandi ✅")
+
+    except Exception as e:
+        logger.error(f"Choose music error: {e}", exc_info=True)
+        await cb.answer("Xatolik", show_alert=True)
+
+
 
 
 
