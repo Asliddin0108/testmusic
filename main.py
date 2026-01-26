@@ -679,7 +679,7 @@ async def format_chosen(cb: CallbackQuery):
 
 
 # ==========================
-# SHAZAM FROM INSTAGRAM VIDEO (FINAL PROFESSIONAL VERSION)
+# SHAZAM FROM INSTAGRAM VIDEO (MULTI-VARIANT PROFESSIONAL PIPELINE)
 # ==========================
 @dp.callback_query(F.data.startswith("shazam_file|"))
 async def shazam_from_instagram(cb: CallbackQuery):
@@ -723,84 +723,148 @@ async def shazam_from_instagram(cb: CallbackQuery):
 
         ffmpeg = FFMPEG_PATH if FFMPEG_PATH else "ffmpeg"
 
-        # 🔥 3 joydan urinib ko‘ramiz
+        # 🔥 5 BOSQICHLI VARIANTLAR (yengildan → kuchliga)
+        variants = [
+            # 1️⃣ ORIGINAL COPY — ENG MUHIM
+            {
+                "name": "copy",
+                "args": [
+                    "-map", "0:a",
+                    "-vn",
+                    "-c:a", "copy"
+                ]
+            },
+
+            # 2️⃣ MP3, LEKIN FILTR YO‘Q
+            {
+                "name": "mp3_nofilter",
+                "args": [
+                    "-map", "0:a",
+                    "-vn",
+                    "-acodec", "mp3",
+                    "-ab", "192k",
+                    "-ac", "2",
+                    "-ar", "44100"
+                ]
+            },
+
+            # 3️⃣ YENGIL FREQUENCY FILTR
+            {
+                "name": "light_filter",
+                "args": [
+                    "-af",
+                    "highpass=f=200,lowpass=f=5000",
+                    "-acodec", "mp3",
+                    "-ab", "192k",
+                    "-ac", "2",
+                    "-ar", "44100"
+                ]
+            },
+
+            # 4️⃣ VOICE BOSTIRISH
+            {
+                "name": "voice_suppress",
+                "args": [
+                    "-af",
+                    "highpass=f=200,lowpass=f=5000,acompressor=threshold=-20dB:ratio=3",
+                    "-acodec", "mp3",
+                    "-ab", "192k",
+                    "-ac", "2",
+                    "-ar", "44100"
+                ]
+            },
+
+            # 5️⃣ OXIRGI KUCHLI FILTR
+            {
+                "name": "strong_filter",
+                "args": [
+                    "-af",
+                    "highpass=f=300,lowpass=f=4000,acompressor=threshold=-25dB:ratio=6,volume=3",
+                    "-acodec", "mp3",
+                    "-ab", "192k",
+                    "-ac", "2",
+                    "-ar", "44100"
+                ]
+            },
+        ]
+
+        # 🔥 3 ta joydan audio olamiz
         for start_sec in [5, 20, 40]:
-            audio_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}_bg.mp3")
 
-            cmd = [
-                ffmpeg, "-y",
+            for variant in variants:
+                audio_path = os.path.join(
+                    TEMP_DIR, f"shazam_{variant['name']}_{uuid.uuid4().hex}.mp3"
+                )
 
-                "-ss", str(start_sec),
-                "-i", video_path,
+                cmd = [
+                    ffmpeg, "-y",
+                    "-ss", str(start_sec),
+                    "-i", video_path,
+                    "-t", "15",          # 🔥 15 soniya — AudD uchun yaxshiroq
+                    "-map", "0:a",
+                    "-vn",
+                    *variant["args"],
+                    audio_path
+                ]
 
-                "-t", "12",
+                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-                # 🔥 Qaysi audio oqim bo‘lsa ham oladi
-                "-map", "0:a",
+                # 🔥 Agar audio chiqmagan bo‘lsa — keyingisiga o‘tamiz
+                if (
+                    result.returncode != 0 or
+                    not os.path.exists(audio_path) or
+                    os.path.getsize(audio_path) < 10000
+                ):
+                    try:
+                        if os.path.exists(audio_path):
+                            os.unlink(audio_path)
+                    except:
+                        pass
+                    continue
 
-                "-vn",
+                # 🔥 AudD ga yuboramiz
+                info = identify_song_audd(audio_path)
 
-                # 🔥 KUCHLI LEKIN AUDDGA MOS FILTR
-                "-af",
-                "highpass=f=200,"
-                "lowpass=f=5000,"
-                "acompressor=threshold=-18dB:ratio=4:attack=5:release=200,"
-                "volume=2.0",
-
-                "-acodec", "mp3",
-                "-ab", "192k",
-                "-ac", "2",
-                "-ar", "44100",
-
-                audio_path
-            ]
-
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-            # 🔥 Agar audio chiqmagan bo‘lsa — keyingi joyga o‘tamiz
-            if result.returncode != 0 or not os.path.exists(audio_path) or os.path.getsize(audio_path) < 10000:
+                # 🔥 Audio faylni o‘chiramiz
                 try:
-                    if os.path.exists(audio_path):
-                        os.unlink(audio_path)
+                    os.unlink(audio_path)
                 except:
                     pass
-                continue
 
-            # 🔥 AudD ga yuboramiz
-            info = identify_song_audd(audio_path)
+                if info:
+                    # 🔥 TOPILDI — qaysi variantda topilganini log qilamiz
+                    logger.info(f"Shazam found with variant: {variant['name']} at {start_sec}s")
 
-            # 🔥 Audio faylni o‘chiramiz
-            try:
-                os.unlink(audio_path)
-            except:
-                pass
+                    log_shazam_use()
+                    SHAZAM_FILE_CACHE.pop(shazam_id, None)
 
-            if info:
-                # 🔥 TOPILDI
-                log_shazam_use()
-                SHAZAM_FILE_CACHE.pop(shazam_id, None)
+                    await status.edit_text(
+                        "🎵 Qo‘shiq topildi:\n\n"
+                        f"🎤 Artist: {info.get('artist')}\n"
+                        f"🎶 Nomi: {info.get('title')}\n"
+                        f"💿 Album: {info.get('album')}\n"
+                        f"📅 Sana: {info.get('release_date')}\n\n"
+                        f"⚙️ Usul: {variant['name']} ({start_sec}s)"
+                    )
+                    return
 
-                await status.edit_text(
-                    "🎵 Qo‘shiq topildi:\n\n"
-                    f"🎤 Artist: {info.get('artist')}\n"
-                    f"🎶 Nomi: {info.get('title')}\n"
-                    f"💿 Album: {info.get('album')}\n"
-                    f"📅 Sana: {info.get('release_date')}"
-                )
-                return
-
-        # 🔴 3 marta urindik — topilmadi
+        # 🔴 HAMMASI SINAB KO‘RILDI — TOPILMADI
         await status.edit_text(
             "❌ Qo‘shiq topilmadi.\n\n"
-            "Sabablar:\n"
-            "• Video ichida musiqa yo‘q\n"
-            "• Juda past eshitiladi\n"
-            "• Noma’lum yoki remix qo‘shiq\n\n"
-            "Iltimos, aniq musiqa bor video yuboring."
+            "Barcha variantlar sinab ko‘rildi:\n"
+            "• Original audio\n"
+            "• MP3 (filtrsız)\n"
+            "• Yengil filtr\n"
+            "• Voice bostirish\n"
+            "• Kuchli filtr\n\n"
+            "Ehtimol, bu:\n"
+            "• Noma’lum qo‘shiq\n"
+            "• Juda past fon musiqa\n"
+            "• Juda qisqa fragment"
         )
 
     except Exception as e:
-        logger.error(f"Shazam from instagram error: {e}", exc_info=True)
+        logger.error(f"Shazam multi-variant error: {e}", exc_info=True)
         await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
 
     finally:
@@ -810,6 +874,7 @@ async def shazam_from_instagram(cb: CallbackQuery):
                 os.unlink(video_path)
         except:
             pass
+
 
 
 
