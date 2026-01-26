@@ -238,6 +238,75 @@ def identify_song_audd(audio_or_video_path: str):
         return None
 
 
+# ======================
+# INSTAGRAM METADATA MUSIC
+# ======================
+def get_instagram_music_from_metadata(url: str) -> dict | None:
+    try:
+        ydl_opts = {
+            "quiet": True,
+            "skip_download": True,
+            "no_warnings": True,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        # 1. To‘g‘ridan-to‘g‘ri maydonlardan
+        if info.get("track") or info.get("music_title"):
+            return {
+                "artist": info.get("artist"),
+                "title": info.get("track") or info.get("music_title")
+            }
+
+        # 2. Description ichidan qidirish
+        desc = info.get("description") or ""
+        if " - " in desc:
+            parts = desc.split(" - ", 1)
+            if len(parts) == 2 and len(parts[0]) < 100:
+                return {
+                    "artist": parts[0].strip(),
+                    "title": parts[1].strip()
+                }
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Instagram metadata error: {e}", exc_info=True)
+        return None
+
+
+# ======================
+# YOUTUBE SEARCH VARIANTS
+# ======================
+def search_youtube_variants(query: str, limit: int = 10) -> list:
+    try:
+        ydl_opts = {
+            "quiet": True,
+            "skip_download": True,
+            "extract_flat": True,
+            "no_warnings": True,
+        }
+
+        search_query = f"ytsearch{limit}:{query}"
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_query, download=False)
+
+        results = []
+
+        for entry in info.get("entries", []):
+            results.append({
+                "title": entry.get("title"),
+                "artist": entry.get("uploader"),
+                "youtube_url": entry.get("url"),
+            })
+
+        return results
+
+    except Exception as e:
+        logger.error(f"YouTube search error: {e}", exc_info=True)
+        return []
 
 
 
@@ -475,6 +544,38 @@ async def handle_ad_text(message: Message, state: FSMContext):
     await message.answer("✅ Reklama matni yangilandi!")
     await state.clear()
 
+# ======================
+# MUSIC VARIANT KEYBOARD
+# ======================
+def build_music_keyboard(total: int):
+    buttons = []
+
+    row1 = []
+    for i in range(1, 6):
+        if i <= total:
+            row1.append(InlineKeyboardButton(text=str(i), callback_data=f"pick|{i-1}"))
+        else:
+            row1.append(InlineKeyboardButton(text=" ", callback_data="noop"))
+
+    row2 = []
+    for i in range(6, 11):
+        if i <= total:
+            row2.append(InlineKeyboardButton(text=str(i), callback_data=f"pick|{i-1}"))
+        else:
+            row2.append(InlineKeyboardButton(text=" ", callback_data="noop"))
+
+    nav = [
+        InlineKeyboardButton(text="<", callback_data="noop"),
+        InlineKeyboardButton(text="x", callback_data="close"),
+        InlineKeyboardButton(text=">", callback_data="noop"),
+    ]
+
+    buttons.append(row1)
+    buttons.append(row2)
+    buttons.append(nav)
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 
 # ==========================
 # LINK QABUL QILISH
@@ -549,6 +650,9 @@ async def format_chosen(cb: CallbackQuery):
     file_type = "audio" if mode == "audio" else "video"
     cached_id = get_cached_file(url, file_type)
 
+    # ======================
+    # 1️⃣ CACHE’DAN YUBORILGANDA
+    # ======================
     if cached_id:
         await status.edit_text("📤 Cache’dan yuborilmoqda...")
 
@@ -560,7 +664,12 @@ async def format_chosen(cb: CallbackQuery):
             # 🔥 FAQAT INSTAGRAM BO‘LSA — SHAZAM TUGMASI
             if "instagram" in url:
                 shazam_id = uuid.uuid4().hex[:8]
-                SHAZAM_FILE_CACHE[shazam_id] = msg.video.file_id
+
+                # 🔴 BU YER O‘ZGARDI
+                SHAZAM_FILE_CACHE[shazam_id] = {
+                    "url": url,
+                    "variants": []
+                }
 
                 kb = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(
@@ -584,7 +693,7 @@ async def format_chosen(cb: CallbackQuery):
         return
 
     # ======================
-    # YUKLAB OLISH
+    # 2️⃣ YANGI YUKLAB OLISH
     # ======================
     try:
         if mode == "audio":
@@ -622,7 +731,12 @@ async def format_chosen(cb: CallbackQuery):
             # 🔥 FAQAT INSTAGRAM BO‘LSA — SHAZAM TUGMASI
             if "instagram" in url:
                 shazam_id = uuid.uuid4().hex[:8]
-                SHAZAM_FILE_CACHE[shazam_id] = msg.video.file_id
+
+                # 🔴 BU YER HAM O‘ZGARDI
+                SHAZAM_FILE_CACHE[shazam_id] = {
+                    "url": url,
+                    "variants": []
+                }
 
                 kb = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(
@@ -650,111 +764,68 @@ async def format_chosen(cb: CallbackQuery):
         await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
 
 
+
 # ==========================
-# SHAZAM FROM INSTAGRAM VIDEO (BACKGROUND MUSIC TUNED)
+# SHAZAM FROM INSTAGRAM VIDEO  (VARIANT LIST SYSTEM)
 # ==========================
 @dp.callback_query(F.data.startswith("shazam_file|"))
 async def shazam_from_instagram(cb: CallbackQuery):
     try:
         _, shazam_id = cb.data.split("|", 1)
-        file_id = SHAZAM_FILE_CACHE.get(shazam_id)
+        data = SHAZAM_FILE_CACHE.get(shazam_id)
     except Exception:
         await cb.answer("Xato", show_alert=True)
         return
 
-    if not file_id:
+    if not data:
         await cb.answer("Bu video eskirib ketgan", show_alert=True)
         return
 
-    status = await cb.message.answer("🎧 Videodagi musiqa aniqlanmoqda...")
+    url = data.get("url")
 
-    # 🛑 LIMIT
-    if not can_use_shazam():
-        await status.edit_text("⛔ Shazam limiti tugadi.")
-        return
+    status = await cb.message.answer("🎧 Musiqa aniqlanmoqda (Instagram + YouTube)...")
 
     try:
-        # 1️⃣ Videoni Telegramdan yuklaymiz (real format bilan)
-        file = await bot.get_file(file_id)
+        # 1️⃣ Instagram metadata’dan asosiy nomni olamiz
+        base_info = get_instagram_music_from_metadata(url)
 
-        ext = os.path.splitext(file.file_path)[1] or ".mp4"
-        video_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}{ext}")
-
-        await bot.download_file(file.file_path, video_path)
-
-        # 2️⃣ 🔥 Background music’ni kuchaytirib audio ajratamiz
-        audio_path = os.path.join(TEMP_DIR, f"shazam_{uuid.uuid4().hex}_bg.mp3")
-
-        ffmpeg = FFMPEG_PATH if FFMPEG_PATH else "ffmpeg"
-
-        cmd = [
-            ffmpeg, "-y",
-
-            # 🔥 Videoning o‘rtasidan boshlaymiz
-            "-ss", "20",
-            "-i", video_path,
-
-            # 🔥 Faqat 5 soniya olamiz
-            "-t", "5",
-            "-vn",
-
-            # 🔥 JUDA KUCHLI BACKGROUND MUSIC FILTR
-            "-af",
-            "highpass=f=300, "            # past erkak ovozini kesadi
-            "lowpass=f=4000, "            # nutq shovqinini kesadi
-            "equalizer=f=1000:width_type=o:width=2:g=6, "  # musiqa diapazonini kuchaytiradi
-            "acompressor=threshold=-20dB:ratio=6:attack=3:release=100, "  # gapni qattiq bosadi
-            "volume=3.5",                # 🔥 fon musiqani kuchli ko‘taradi
-
-            "-ac", "1",        # mono
-            "-ar", "44100",   # 44.1 kHz
-            audio_path
-        ]
-
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        if result.returncode != 0 or not os.path.exists(audio_path):
-            logger.error("FFmpeg bg-music filter error:")
-            logger.error(result.stderr.decode())
-            await status.edit_text("❌ Videodan audio ajratib bo‘lmadi.")
-            try:
-                os.unlink(video_path)
-            except:
-                pass
-            return
-
-        # 3️⃣ 🔥 FAQAT FILTRLANGAN AUDIO’NI AudD GA YUBORAMIZ
-        info = identify_song_audd(audio_path)
-
-        # 4️⃣ Tozalash
-        try:
-            os.unlink(video_path)
-            os.unlink(audio_path)
-        except:
-            pass
-
-        SHAZAM_FILE_CACHE.pop(shazam_id, None)
-
-        if not info:
+        if not base_info:
             await status.edit_text(
-                "❌ Qo‘shiq topilmadi.\n\n"
-                "Iltimos, musiqa aniq eshitiladigan video bo‘lsin."
+                "❌ Instagram bu video uchun musiqa nomini ko‘rsatmagan.\n\n"
+                "Bu video original sound bo‘lishi mumkin."
             )
             return
 
-        log_shazam_use()
+        artist = base_info.get("artist") or ""
+        title = base_info.get("title") or ""
 
-        await status.edit_text(
-            "🎵 Qo‘shiq topildi:\n\n"
-            f"🎤 Artist: {info.get('artist')}\n"
-            f"🎶 Nomi: {info.get('title')}\n"
-            f"💿 Album: {info.get('album')}\n"
-            f"📅 Sana: {info.get('release_date')}"
-        )
+        query = f"{artist} {title}".strip()
+
+        # 2️⃣ YouTube’dan 10 ta variant qidiramiz
+        variants = search_youtube_variants(query, limit=10)
+
+        if not variants:
+            await status.edit_text("❌ YouTube’dan mos variantlar topilmadi.")
+            return
+
+        # 3️⃣ Cache’ga variantlarni saqlaymiz
+        SHAZAM_FILE_CACHE[shazam_id]["variants"] = variants
+
+        # 4️⃣ Ro‘yxatni chiqaramiz
+        text = "🎶 Topilgan musiqalar:\n\n"
+        for i, item in enumerate(variants, start=1):
+            text += f"{i}. {item['title']}\n"
+
+        text += "\nKerakli raqamni tanlang 👇"
+
+        kb = build_music_keyboard(len(variants))
+
+        await status.edit_text(text, reply_markup=kb)
 
     except Exception as e:
-        logger.error(f"Shazam from instagram error: {e}", exc_info=True)
+        logger.error(f"Variant list error: {e}", exc_info=True)
         await status.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring.")
+
 
 
 # ======================
