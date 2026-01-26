@@ -725,68 +725,77 @@ async def shazam_from_instagram(cb: CallbackQuery):
 
         # 🔥 5 BOSQICHLI VARIANTLAR (yengildan → kuchliga)
         variants = [
-            # 1️⃣ ORIGINAL COPY — ENG MUHIM
+            # 1️⃣ ORIGINAL COPY (m4a konteynerga)
             {
                 "name": "copy",
                 "args": [
-                    "-map", "0:a",
+                    "-map", "0:a:0?",
                     "-vn",
                     "-c:a", "copy"
-                ]
+                ],
+                "ext": ".m4a"
             },
 
             # 2️⃣ MP3, LEKIN FILTR YO‘Q
             {
                 "name": "mp3_nofilter",
                 "args": [
-                    "-map", "0:a",
+                    "-map", "0:a:0?",
                     "-vn",
                     "-acodec", "mp3",
                     "-ab", "192k",
                     "-ac", "2",
                     "-ar", "44100"
-                ]
+                ],
+                "ext": ".mp3"
             },
 
             # 3️⃣ YENGIL FREQUENCY FILTR
             {
                 "name": "light_filter",
                 "args": [
-                    "-af",
-                    "highpass=f=200,lowpass=f=5000",
+                    "-map", "0:a:0?",
+                    "-vn",
+                    "-af", "highpass=f=200,lowpass=f=5000",
                     "-acodec", "mp3",
                     "-ab", "192k",
                     "-ac", "2",
                     "-ar", "44100"
-                ]
+                ],
+                "ext": ".mp3"
             },
 
             # 4️⃣ VOICE BOSTIRISH
             {
                 "name": "voice_suppress",
                 "args": [
-                    "-af",
-                    "highpass=f=200,lowpass=f=5000,acompressor=threshold=-20dB:ratio=3",
+                    "-map", "0:a:0?",
+                    "-vn",
+                    "-af", "highpass=f=200,lowpass=f=5000,acompressor=threshold=-20dB:ratio=3",
                     "-acodec", "mp3",
                     "-ab", "192k",
                     "-ac", "2",
                     "-ar", "44100"
-                ]
+                ],
+                "ext": ".mp3"
             },
 
             # 5️⃣ OXIRGI KUCHLI FILTR
             {
                 "name": "strong_filter",
                 "args": [
-                    "-af",
-                    "highpass=f=300,lowpass=f=4000,acompressor=threshold=-25dB:ratio=6,volume=3",
+                    "-map", "0:a:0?",
+                    "-vn",
+                    "-af", "highpass=f=300,lowpass=f=4000,acompressor=threshold=-25dB:ratio=6,volume=3",
                     "-acodec", "mp3",
                     "-ab", "192k",
                     "-ac", "2",
                     "-ar", "44100"
-                ]
+                ],
+                "ext": ".mp3"
             },
         ]
+
 
         # 🔥 3 ta joydan audio olamiz
         for start_sec in [5, 20, 40]:
