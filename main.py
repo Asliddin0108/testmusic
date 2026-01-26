@@ -690,28 +690,29 @@ async def shazam_from_instagram(cb: CallbackQuery):
         cmd = [
             ffmpeg, "-y",
 
-            "-ss", "15",
+            # 🔥 Videoning o‘rtasidan boshlaymiz
+            "-ss", "5",
             "-i", video_path,
 
-            "-t", "12",
-
-            # 🔥 MUHIM: faqat audio bo‘lsa map qilamiz
-            "-map", "0:a:0?",
-
+            # 🔥 12 soniya — ideal
+            "-t", "5",
             "-vn",
 
-            # 🔥 YENGIL FILTR (xavfsiz)
+            # 🔥 KUCHLI LEKIN AUDDGA MOS FILTR
             "-af",
-            "highpass=f=200,lowpass=f=5000,acompressor=threshold=-18dB:ratio=4,volume=2.0",
+            "highpass=f=200,"          # juda past shovqinni kesadi
+            "lowpass=f=5000,"          # juda yuqori shovqinni kesadi
+            "acompressor=threshold=-18dB:ratio=4:attack=5:release=200,"  # nutqni bosadi
+            "volume=2.0",             # fon musiqani ko‘taradi
 
+            # 🔥 FORMAT — hali ham toza fingerprint
             "-acodec", "mp3",
             "-ab", "192k",
-            "-ac", "2",
+            "-ac", "2",               # STEREO
             "-ar", "44100",
 
             audio_path
         ]
-
 
 
 
