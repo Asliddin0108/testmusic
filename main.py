@@ -238,9 +238,20 @@ def identify_song_audd(audio_or_video_path: str):
         return None
 
 def has_audio_stream(video_path: str) -> bool:
-    ffprobe = (FFMPEG_PATH or "ffmpeg").replace("ffmpeg", "ffprobe")
+    # 🔥 Avval system ffprobe ni qidiramiz
+    ffprobe_path = shutil.which("ffprobe")
+
+    # Agar topilmasa, ffmpeg yonidan taxmin qilamiz
+    if not ffprobe_path and FFMPEG_PATH:
+        ffprobe_path = FFMPEG_PATH.replace("ffmpeg", "ffprobe")
+
+    # Agar baribir yo‘q bo‘lsa — audio tekshira olmaymiz
+    if not ffprobe_path or not os.path.exists(ffprobe_path):
+        logger.warning("ffprobe topilmadi, audio stream tekshirib bo‘lmadi")
+        return True  # xavfsiz tomoni: audio bor deb hisoblaymiz
+
     cmd = [
-        ffprobe,
+        ffprobe_path,
         "-v", "error",
         "-select_streams", "a",
         "-show_entries", "stream=index",
@@ -251,6 +262,7 @@ def has_audio_stream(video_path: str) -> bool:
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = result.stdout.decode().strip()
     return bool(output)
+
 
 
 
