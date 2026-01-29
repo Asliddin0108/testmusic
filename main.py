@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 # ================== CONFIG ==================
 load_dotenv()
 
-BOT_TOKEN = os.getenv("8253736025:AAHmMPac7DmA_fi01urRtI0wwAfd7SAYArE")
-ADMIN_ID = int(os.getenv("8238730404"))
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
