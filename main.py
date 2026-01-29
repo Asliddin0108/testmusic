@@ -49,17 +49,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def instagram(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     api = f"https://4503091-gf96974.twc1.net/Api/in.php?url={text}"
-    data = requests.get(api).json()
-    video = data["videos"][0]["url"]
 
-    msg = await update.message.reply_text("📥")
-    await msg.delete()
+    try:
+        r = requests.get(api, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        video = data["videos"][0]["url"]
 
-    await update.message.reply_video(
-        video=video,
-        caption=f"{MATIN} @{context.bot.username}",
-        reply_markup=ortga_menu(context.bot.username)
-    )
+        msg = await update.message.reply_text("📥")
+        await msg.delete()
+
+        await update.message.reply_video(
+            video=video,
+            caption=f"{MATIN} @{context.bot.username}",
+            reply_markup=ortga_menu(context.bot.username)
+        )
+
+    except Exception as e:
+        await update.message.reply_text(
+            "❌ Instagram yuklab bo‘lmadi.\n"
+            "⏳ Server vaqtincha ishlamayapti.\n"
+            "🔁 Keyinroq urinib ko‘ring."
+        )
+
 
 # ===================== TIKTOK =====================
 async def tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
