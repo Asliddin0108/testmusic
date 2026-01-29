@@ -12,6 +12,8 @@ from telegram.ext import (
 
 BOT_TOKEN = "8253736025:AAHmMPac7DmA_fi01urRtI0wwAfd7SAYArE"
 
+MATIN = "📥 Yuklab olindi ushbu bot orqali"
+
 
 def bosh_menu(botname):
     return InlineKeyboardMarkup([
@@ -48,9 +50,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== INSTAGRAM =====================
 async def instagram(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    api = f"https://4503091-gf96974.twc1.net/Api/in.php?url={text}"
-    data = requests.get(api).json()
-    video = data["videos"][0]["url"]
+    api = f"https://igram.world/api/ig?url={text}"
+
+    try:
+        data = requests.get(api, timeout=15).json()
+        video = data["links"][0]["url"]
+    except:
+        await update.message.reply_text("❌ Instagram video topilmadi")
+        return
 
     msg = await update.message.reply_text("📥")
     await msg.delete()
@@ -64,7 +71,12 @@ async def instagram(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== TIKTOK =====================
 async def tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     api = f"https://tikwm.com/api/?url={update.message.text}"
-    data = requests.get(api).json()["data"]["play"]
+
+    try:
+        data = requests.get(api).json()["data"]["play"]
+    except:
+        await update.message.reply_text("❌ TikTok video topilmadi")
+        return
 
     msg = await update.message.reply_text("📥")
     await msg.delete()
@@ -86,7 +98,6 @@ async def youtube(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ API javob bermadi")
         return
 
-    # Video linkni topishga urinamiz
     video = None
     title = data.get("title", "YouTube video")
 
@@ -109,7 +120,6 @@ async def youtube(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"{title}\n\n{MATIN} @{context.bot.username}",
         reply_markup=ortga_menu(context.bot.username)
     )
-
 
 # ===================== CALLBACK =====================
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,7 +154,12 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     api = f"https://4503091-gf96974.twc1.net/Api/mega.php?search={text}"
-    data = requests.get(api).json()
+
+    try:
+        data = requests.get(api).json()
+    except:
+        await update.message.reply_html("❌ API ishlamayapti")
+        return
 
     if not data:
         await update.message.reply_html("😔 Hech narsa topilmadi")
@@ -152,15 +167,18 @@ async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
     caption = ""
+
     for i, m in enumerate(data[:10]):
         caption += f"<b>{i+1}</b>. <i>{m['artist']} - {m['title']}</i>\n"
         keyboard.append(
             InlineKeyboardButton(str(i+1), callback_data=f"{text}-{i}")
         )
 
-    markup = InlineKeyboardMarkup([keyboard[:5], keyboard[5:], [
-        InlineKeyboardButton("❌", callback_data="del")
-    ]])
+    markup = InlineKeyboardMarkup([
+        keyboard[:5],
+        keyboard[5:],
+        [InlineKeyboardButton("❌", callback_data="del")]
+    ])
 
     await update.message.reply_photo(
         photo="https://t.me/malumotlarombor",
