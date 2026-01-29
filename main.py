@@ -10,7 +10,10 @@ from telegram.ext import (
     CallbackQueryHandler, ContextTypes, filters
 )
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # ❗ tokenni ENV ga qo‘y
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+if not BOT_TOKEN:
+    raise RuntimeError("❌ BOT_TOKEN topilmadi. Railway → Variables ni tekshir!")
 MATIN = "📥Yuklab olindi ushbu bot orqali"
 
 def bosh_menu(botname):
