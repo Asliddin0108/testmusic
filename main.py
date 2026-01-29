@@ -79,10 +79,27 @@ async def tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def youtube(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     api = f"https://buyapi.68d7a3db504c5.xvest6.ru/API/YouTube/?key=mTuN5&url={url}"
-    data = requests.get(api).json()
 
-    video = data["video_with_audio"][0]["url"]
-    title = data["title"]
+    try:
+        data = requests.get(api, timeout=15).json()
+    except:
+        await update.message.reply_text("❌ API javob bermadi")
+        return
+
+    # Video linkni topishga urinamiz
+    video = None
+    title = data.get("title", "YouTube video")
+
+    if "video_with_audio" in data:
+        video = data["video_with_audio"][0]["url"]
+    elif "video" in data:
+        video = data["video"]
+    elif "url" in data:
+        video = data["url"]
+
+    if not video:
+        await update.message.reply_text("❌ Video topilmadi")
+        return
 
     msg = await update.message.reply_text("📥")
     await msg.delete()
@@ -92,6 +109,7 @@ async def youtube(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"{title}\n\n{MATIN} @{context.bot.username}",
         reply_markup=ortga_menu(context.bot.username)
     )
+
 
 # ===================== CALLBACK =====================
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
