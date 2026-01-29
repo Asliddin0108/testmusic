@@ -61,15 +61,26 @@ SHAZAM_FILE_CACHE = {}
 import sys
 import shutil
 
+FFMPEG_PATH = None
+
+# 1️⃣ Windows
 if sys.platform.startswith("win"):
     FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
-else:
+
+# 2️⃣ Linux / Railway: system ffmpeg
+if not FFMPEG_PATH:
     FFMPEG_PATH = shutil.which("ffmpeg")
 
+# 3️⃣ Agar yo‘q bo‘lsa — imageio-ffmpeg yuklaydi
 if not FFMPEG_PATH:
-    raise RuntimeError("FFmpeg topilmadi!")
+    try:
+        import imageio_ffmpeg
+        FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        FFMPEG_PATH = None
 
 logger.info(f"FFmpeg path: {FFMPEG_PATH}")
+
 
 
 
