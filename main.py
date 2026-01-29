@@ -35,6 +35,8 @@ def get_music(query: str):
         pass
     return None
 
+from aiogram.utils.exceptions import MessageNotModified
+
 # ================== /start ==================
 @dp.message_handler(commands=["start"])
 async def start_cmd(message: types.Message):
@@ -49,23 +51,29 @@ async def start_cmd(message: types.Message):
     ]
 
     current = ""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Guruhga qoʻshish ⤴️",
+                    url=f"https://t.me/{bot_info.username}?startgroup=add"
+                )
+            ]
+        ]
+    )
+
     for ch in text_anim:
         current += ch
-        await bot.edit_message_text(
-            f"<b>{current}</b>",
-            chat_id=sent.chat.id,
-            message_id=sent.message_id,
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="Guruhga qoʻshish ⤴️",
-                            url=f"https://t.me/{bot_info.username}?startgroup=add"
-                        )
-                    ]
-                ]
+        try:
+            await bot.edit_message_text(
+                f"<b>{current}</b>",
+                chat_id=sent.chat.id,
+                message_id=sent.message_id,
+                reply_markup=keyboard
             )
-        )
+        except MessageNotModified:
+            pass
+
         await asyncio.sleep(0.05)
 
 # ================== SEARCH ==================
