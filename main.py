@@ -1,223 +1,164 @@
 import os
-import math
-import asyncio
+import re
 import requests
-from urllib.parse import quote
+from datetime import datetime
+from telegram import (
+    Update, InlineKeyboardButton, InlineKeyboardMarkup
+)
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ContextTypes, filters
+)
 
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from dotenv import load_dotenv
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # ❗ tokenni ENV ga qo‘y
+MATIN = "📥Yuklab olindi ushbu bot orqali"
 
-# ================== CONFIG ==================
-load_dotenv()
+def bosh_menu(botname):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Guruhga qo‘shish",
+         url=f"https://t.me/{botname}?startgroup=new")]
+    ])
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+def ortga_menu(botname):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌", callback_data="del")],
+        [InlineKeyboardButton("➕ Guruhga qo‘shish",
+         url=f"https://t.me/{botname}?startgroup=new")]
+    ])
 
-bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
-dp = Dispatcher(bot)
+# ===================== /start =====================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private":
+        return
+    botname = context.bot.username
+    await update.message.reply_html(
+        f"""🔥 Assalomu alaykum. @{botname} ga xush kelibsiz!
 
-DOWNLOAD_DIR = "downloads"
-PER_PAGE = 10
+• Instagram – video
+• TikTok – suv belgisiz
+• YouTube – video
 
-# ================== HELPERS ==================
-def format_duration(ms: int) -> str:
-    sec = ms // 1000
-    return f"{sec//60}:{sec%60:02d}"
+🎵 Shazam:
+• Qo‘shiq nomi yoki ijrochi
 
-def get_music(query: str):
-    url = f"https://api.smtv.uz/shazam/?music={quote(query)}"
-    try:
-        r = requests.get(url, timeout=15)
-        if r.status_code == 200:
-            return r.json()
-    except:
-        pass
-    return None
-
-from aiogram.utils.exceptions import MessageNotModified
-
-# ================== /start ==================
-@dp.message_handler(commands=["start"])
-async def start_cmd(message: types.Message):
-    bot_info = await bot.get_me()
-    sent = await message.answer("_")
-
-    text_anim = [
-        "A","s","s","a","l","o","m","u"," ",
-        "a","l","a","y","k","u","m"," ",
-        "x","u","s","h"," ",
-        "k","e","l","i","b","s","i","z"
-    ]
-
-    current = ""
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Guruhga qoʻshish ⤴️",
-                    url=f"https://t.me/{bot_info.username}?startgroup=add"
-                )
-            ]
-        ]
+😎 Bot guruhlarda ham ishlaydi!""",
+        reply_markup=bosh_menu(botname)
     )
 
-    for ch in text_anim:
-        current += ch
-        try:
-            await bot.edit_message_text(
-                f"<b>{current}</b>",
-                chat_id=sent.chat.id,
-                message_id=sent.message_id,
-                reply_markup=keyboard
-            )
-        except MessageNotModified:
-            pass
+# ===================== INSTAGRAM =====================
+async def instagram(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    api = f"https://4503091-gf96974.twc1.net/Api/in.php?url={text}"
+    data = requests.get(api).json()
+    video = data["videos"][0]["url"]
 
-        await asyncio.sleep(0.05)
+    msg = await update.message.reply_text("📥")
+    await msg.delete()
 
-# ================== SEARCH ==================
-@dp.message_handler(lambda m: not m.text.startswith("/") and "https://" not in m.text)
-async def search_music(message: types.Message):
-    await bot.send_chat_action(message.chat.id, "typing")
+    await update.message.reply_video(
+        video=video,
+        caption=f"{MATIN} @{context.bot.username}",
+        reply_markup=ortga_menu(context.bot.username)
+    )
 
-    data = get_music(message.text)
-    if not data or not data.get("results", {}).get("data"):
-        await message.answer(
-            f"Kechirasiz, <b>{message.text}</b> sarlavhali musiqani topa olmadim"
-        )
+# ===================== TIKTOK =====================
+async def tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    api = f"https://tikwm.com/api/?url={update.message.text}"
+    data = requests.get(api).json()["data"]["play"]
+
+    msg = await update.message.reply_text("📥")
+    await msg.delete()
+
+    await update.message.reply_video(
+        video=data,
+        caption=f"{MATIN} @{context.bot.username}",
+        reply_markup=ortga_menu(context.bot.username)
+    )
+
+# ===================== YOUTUBE =====================
+async def youtube(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text
+    api = f"https://4503091-gf96974.twc1.net/Api/YouTube.php?url={url}"
+    data = requests.get(api).json()
+
+    video = data["video_with_audio"][0]["url"]
+    title = data["title"]
+
+    msg = await update.message.reply_text("📥")
+    await msg.delete()
+
+    await update.message.reply_video(
+        video=video,
+        caption=f"{title}\n\n{MATIN} @{context.bot.username}",
+        reply_markup=ortga_menu(context.bot.username)
+    )
+
+# ===================== CALLBACK =====================
+async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "del":
+        await query.message.delete()
         return
 
-    await send_music_page(message.chat.id, message.text, 0)
+    if "-" in query.data:
+        search, index = query.data.rsplit("-", 1)
+        api = f"https://4503091-gf96974.twc1.net/Api/mega.php?search={search}"
+        data = requests.get(api).json()
+        music = data[int(index) + 1]
 
-async def send_music_page(chat_id, query, page):
-    data = get_music(query)
-    tracks = data["results"]["data"]
-
-    total = len(tracks)
-    pages = math.ceil(total / PER_PAGE)
-
-    start = page * PER_PAGE
-    sliced = tracks[start:start+PER_PAGE]
-
-    text = ""
-    kb = []
-
-    for i, t in enumerate(sliced):
-        num = start + i + 1
-        text += f"{num}. <b>{t['Name']} - {', '.join(t['Artists'])}</b> {format_duration(t['Duration'])}\n"
-        kb.append(
-            InlineKeyboardButton(
-                text=str(num),
-                callback_data=f"music={query}={start+i}"
-            )
+        now = datetime.now()
+        caption = (
+            f"<b>{music['artist']}</b> - <i>{music['title']}</i>\n\n"
+            f"@{context.bot.username} orqali yuklab olindi\n\n"
+            f"⏰{now.strftime('%H:%M')} 📅{now.strftime('%d.%m.%Y')}"
         )
 
-    keyboard = [kb[i:i+5] for i in range(0, len(kb), 5)]
+        await query.message.reply_audio(
+            audio=music["Musiqa_linki"],
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=ortga_menu(context.bot.username)
+        )
 
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton("⬅️", callback_data=f"page={query}=prev={page}"))
-    if page < pages-1:
-        nav.append(InlineKeyboardButton("➡️", callback_data=f"page={query}=next={page}"))
+# ===================== SEARCH =====================
+async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    api = f"https://4503091-gf96974.twc1.net/Api/mega.php?search={text}"
+    data = requests.get(api).json()
 
-    if nav:
-        keyboard.append(nav)
+    if not data:
+        await update.message.reply_html("😔 Hech narsa topilmadi")
+        return
 
-    await bot.send_message(
-        chat_id,
-        f"{text}\n<b>Sahifa {page+1} из {pages}</b>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    keyboard = []
+    caption = ""
+    for i, m in enumerate(data[:10]):
+        caption += f"<b>{i+1}</b>. <i>{m['artist']} - {m['title']}</i>\n"
+        keyboard.append(
+            InlineKeyboardButton(str(i+1), callback_data=f"{text}-{i}")
+        )
+
+    markup = InlineKeyboardMarkup([keyboard[:5], keyboard[5:], [
+        InlineKeyboardButton("❌", callback_data="del")
+    ]])
+
+    await update.message.reply_photo(
+        photo="https://t.me/Man_ikkichi/145",
+        caption=f"<b>🎙 {text}</b>\n\n{caption}",
+        parse_mode="HTML",
+        reply_markup=markup
     )
 
-# ================== PAGE CALLBACK ==================
-@dp.callback_query_handler(lambda c: c.data.startswith("page="))
-async def change_page(call: types.CallbackQuery):
-    _, query, direction, page = call.data.split("=")
-    page = int(page)
+# ===================== MAIN =====================
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    page = page-1 if direction == "prev" else page+1
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(callbacks))
+app.add_handler(MessageHandler(filters.TEXT & filters.Regex("instagram.com"), instagram))
+app.add_handler(MessageHandler(filters.TEXT & filters.Regex("vt.tiktok.com"), tiktok))
+app.add_handler(MessageHandler(filters.TEXT & filters.Regex("youtube.com|youtu.be"), youtube))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_music))
 
-    data = get_music(query)
-    tracks = data["results"]["data"]
-
-    total = len(tracks)
-    pages = math.ceil(total / PER_PAGE)
-
-    start = page * PER_PAGE
-    sliced = tracks[start:start+PER_PAGE]
-
-    text = ""
-    kb = []
-
-    for i, t in enumerate(sliced):
-        num = start + i + 1
-        text += f"{num}. <b>{t['Name']} - {', '.join(t['Artists'])}</b> {format_duration(t['Duration'])}\n"
-        kb.append(
-            InlineKeyboardButton(
-                text=str(num),
-                callback_data=f"music={query}={start+i}"
-            )
-        )
-
-    keyboard = [kb[i:i+5] for i in range(0, len(kb), 5)]
-
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton("⬅️", callback_data=f"page={query}=prev={page}"))
-    if page < pages-1:
-        nav.append(InlineKeyboardButton("➡️", callback_data=f"page={query}=next={page}"))
-
-    if nav:
-        keyboard.append(nav)
-
-    await call.message.edit_text(
-        f"{text}\n<b>Sahifa {page+1} из {pages}</b>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
-    )
-
-# ================== MUSIC DOWNLOAD ==================
-@dp.callback_query_handler(lambda c: c.data.startswith("music="))
-async def send_music(call: types.CallbackQuery):
-    _, query, index = call.data.split("=")
-    index = int(index)
-
-    data = get_music(query)
-    track = data["results"]["data"][index]
-
-    os.makedirs(f"{DOWNLOAD_DIR}/{call.message.chat.id}", exist_ok=True)
-
-    safe_name = "".join(c if c.isalnum() else "_" for c in track["Name"])
-    path = f"{DOWNLOAD_DIR}/{call.message.chat.id}/{safe_name}.mp3"
-
-    r = requests.get(track["url"])
-    with open(path, "wb") as f:
-        f.write(r.content)
-
-    await bot.send_audio(
-        call.message.chat.id,
-        types.InputFile(path),
-        caption=(
-            f"🎵 <b>Nomi</b>: {track['Name']}\n"
-            f"💿 <b>Albomi</b>: {track['Album']}\n"
-            f"🎤 <b>Ijrochi</b>: {', '.join(track['Artists'])}\n"
-            f"📅 <b>Sana</b>: {track['Date']}\n"
-            f"🎼 <b>Janri</b>: {track['Genre']}"
-        )
-    )
-
-    os.remove(path)
-
-# ================== /kod ==================
-@dp.message_handler(commands=["kod"])
-async def send_code(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        await bot.send_document(
-            ADMIN_ID,
-            types.InputFile(__file__),
-            caption=f"<b>@{(await bot.get_me()).username} kodi</b>"
-        )
-
-# ================== RUN ==================
-if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+app.run_polling()
