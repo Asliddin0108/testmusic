@@ -1,3 +1,2 @@
-aiogram==2.25.2
-python-dotenv
+python-telegram-bot==20.7
 requests
