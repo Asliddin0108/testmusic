@@ -78,7 +78,7 @@ async def tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== YOUTUBE =====================
 async def youtube(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
-    api = f"https://buyapi.68d7a3db504c5.xvest6.ru/API/YouTube/?key={mTuN5}&url=Shorts_url"
+    api = f"https://buyapi.68d7a3db504c5.xvest6.ru/API/YouTube/?key=mTuN5&url={Shorts_url}"
     data = requests.get(api).json()
 
     video = data["video_with_audio"][0]["url"]
