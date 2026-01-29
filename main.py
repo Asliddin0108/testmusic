@@ -23,7 +23,6 @@ from aiogram.types import (
 BOT_TOKEN = "8253736025:AAHmMPac7DmA_fi01urRtI0wwAfd7SAYArE"
 ADMIN_IDS = [8238730404]
 AUDD_API_TOKEN = "030ece056f7aacdcc32f1f1b7330c24e"
-FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMP_DIR = os.path.join(BASE_DIR, "temp")
@@ -57,6 +56,21 @@ logger = logging.getLogger("vidbot")
 # ======================
 LINK_CACHE = {}
 SHAZAM_FILE_CACHE = {}
+
+
+import sys
+import shutil
+
+if sys.platform.startswith("win"):
+    FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"
+else:
+    FFMPEG_PATH = shutil.which("ffmpeg")
+
+if not FFMPEG_PATH:
+    raise RuntimeError("FFmpeg topilmadi!")
+
+logger.info(f"FFmpeg path: {FFMPEG_PATH}")
+
 
 
 # ======================
