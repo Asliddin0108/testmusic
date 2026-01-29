@@ -49,29 +49,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def instagram(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     api = f"https://4503091-gf96974.twc1.net/Api/in.php?url={text}"
+    data = requests.get(api).json()
+    video = data["videos"][0]["url"]
 
-    try:
-        r = requests.get(api, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        video = data["videos"][0]["url"]
+    msg = await update.message.reply_text("📥")
+    await msg.delete()
 
-        msg = await update.message.reply_text("📥")
-        await msg.delete()
-
-        await update.message.reply_video(
-            video=video,
-            caption=f"{MATIN} @{context.bot.username}",
-            reply_markup=ortga_menu(context.bot.username)
-        )
-
-    except Exception as e:
-        await update.message.reply_text(
-            "❌ Instagram yuklab bo‘lmadi.\n"
-            "⏳ Server vaqtincha ishlamayapti.\n"
-            "🔁 Keyinroq urinib ko‘ring."
-        )
-
+    await update.message.reply_video(
+        video=video,
+        caption=f"{MATIN} @{context.bot.username}",
+        reply_markup=ortga_menu(context.bot.username)
+    )
 
 # ===================== TIKTOK =====================
 async def tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -157,7 +145,7 @@ async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]])
 
     await update.message.reply_photo(
-        photo="https://t.me/Man_ikkichi/145",
+        photo="https://t.me/malumotlarombor",
         caption=f"<b>🎙 {text}</b>\n\n{caption}",
         parse_mode="HTML",
         reply_markup=markup
